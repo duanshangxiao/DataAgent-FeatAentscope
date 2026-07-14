@@ -10,9 +10,9 @@ springdoc:
 # 存储 DataAgent 业务数据的数据库，并非Agent分析数据的来源
 spring:
   datasource:
-    url: ${DATA_AGENT_DATASOURCE_URL:jdbc:mysql://127.0.0.1:3306/saa_data_agent?useUnicode=true&characterEncoding=utf-8&zeroDateTimeBehavior=convertToNull&transformedBitIsBoolean=true&allowMultiQueries=true&allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=Asia/Shanghai}
+    url: ${DATA_AGENT_DATASOURCE_URL:jdbc:mysql://127.0.0.1:3360/feat-agentscope?useUnicode=true&characterEncoding=utf-8&zeroDateTimeBehavior=convertToNull&transformedBitIsBoolean=true&allowMultiQueries=true&allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=Asia/Shanghai}
     username: ${DATA_AGENT_DATASOURCE_USERNAME:root}
-    password: ${DATA_AGENT_DATASOURCE_PASSWORD:root}
+    password: ${DATA_AGENT_DATASOURCE_PASSWORD:Duansx@240612}
     driver-class-name: com.mysql.cj.jdbc.Driver
     type: com.alibaba.druid.pool.DruidDataSource
   sql:
@@ -25,7 +25,19 @@ spring:
       encoding: utf-8
   ai:
     vectorstore:
-      type: simple
+#      type: simple
+      type: pgvector
+      pgvector:
+#        host: localhost
+#        port: 5432
+#        database: vector_db_feat
+        url: ${DATA_AGENT_VECTORSTORE_URL:jdbc:postgresql://localhost:5432/vector_db_feat?currentSchema=public}
+        username: duansx
+        password: bigdata321
+        driver-class-name: org.postgresql.Driver
+        schema-name: public
+        table-name: cares_data_agent_weihai
+        dimensions: 1024
     alibaba:
       data-agent:
         vector-store:
@@ -54,6 +66,14 @@ spring:
             custom-domain: ${OSS_CUSTOM_DOMAIN:}
         skills:
           local-path: ./agent-skills
+        capabilities:
+          metric-system:
+            enabled: true
+            swagger-url: ${DATA_AGENT_METRIC_SWAGGER_URL:http://127.0.0.1:8081/v3/api-docs/metric}
+            base-url: ${DATA_AGENT_METRIC_BASE_URL:http://127.0.0.1:8081}
+            refresh-interval-seconds: 1800
+            route-threshold: 0.75
+            timeout-ms: 10000
         max-sql-retry-count: 10
         # Langfuse 可观测性配置
         langfuse:
@@ -84,4 +104,3 @@ logging:
     com.alibaba.cloud.ai.dataagent.aiagent: debug
     com.alibaba.cloud.ai.mapper: debug
     org.springframework.jdbc: debug
-

@@ -18,6 +18,7 @@ package com.alibaba.cloud.ai.dataagent.observability;
 import com.alibaba.cloud.ai.dataagent.agentscope.dto.AgentRequest;
 import com.alibaba.cloud.ai.dataagent.agentscope.runtime.QueryClarifyService.QueryClarifyAssessment;
 import com.alibaba.cloud.ai.dataagent.agentscope.tool.datasource.DatasourceExplorerResult;
+import com.alibaba.cloud.ai.dataagent.capability.CapabilityRouteResult;
 import com.alibaba.cloud.ai.dataagent.agentscope.tool.semantic.SemanticModelSearchHit;
 import com.alibaba.cloud.ai.dataagent.service.knowledge.DomainKnowledgeSearchService.DomainKnowledgeSearchResult;
 import com.alibaba.cloud.ai.dataagent.service.knowledge.DomainKnowledgeSearchService.KnowledgeHit;
@@ -126,6 +127,21 @@ public class AnswerTraceExplainStore {
 			return;
 		}
 		withAssembly(request, assembly -> applyDatasourceResult(assembly, result));
+	}
+
+	public void recordCapabilityRouting(AgentRequest request, CapabilityRouteResult routeResult) {
+		if (routeResult == null) {
+			return;
+		}
+		withAssembly(request, assembly -> applyCapabilityRouting(assembly, routeResult));
+	}
+
+	public void recordMetricCatalogSearch(AgentRequest request, String query, String summary, List<String> matchedMetrics) {
+		withAssembly(request, assembly -> applyMetricCatalogSearch(assembly, query, summary, matchedMetrics));
+	}
+
+	public void recordMetricQueryResult(AgentRequest request, String metricCode, String summary) {
+		withAssembly(request, assembly -> applyMetricQueryResult(assembly, metricCode, summary));
 	}
 
 	public Optional<AnswerTraceExplainView> getExplain(String sessionId, String runtimeRequestId) {
@@ -326,6 +342,52 @@ public class AnswerTraceExplainStore {
 		assembly.updatedAt = Instant.now().toEpochMilli();
 	}
 
+	private void applyCapabilityRouting(ExplainAssembly assembly, CapabilityRouteResult routeResult) {
+		assembly.routeType = routeResult.routeType() == null ? null : routeResult.routeType().name();
+		assembly.capabilityId = routeResult.matchedCapabilityId();
+		assembly.matchedMetrics.clear();
+		assembly.matchedMetrics.addAll(routeResult.matchedTargets());
+		assembly.toolSteps.add(ToolStepView.builder()
+			.toolName("capability.route")
+			.title("能力路由")
+			.summary(routeResult.reason())
+			.detail("routeType=%s, matchedTargets=%s".formatted(routeResult.routeType(), routeResult.matchedTargets()))
+			.timestampEpochMs(Instant.now().toEpochMilli())
+			.build());
+		assembly.updatedAt = Instant.now().toEpochMilli();
+	}
+
+	private void applyMetricCatalogSearch(ExplainAssembly assembly, String query, String summary,
+			List<String> matchedMetrics) {
+		assembly.matchedMetrics.clear();
+		if (matchedMetrics != null) {
+			assembly.matchedMetrics.addAll(matchedMetrics.stream().filter(StringUtils::hasText).map(String::trim).toList());
+		}
+		assembly.toolSteps.add(ToolStepView.builder()
+			.toolName("metric.catalog.search")
+			.title("指标目录检索")
+			.summary(summary)
+			.detail(query)
+			.timestampEpochMs(Instant.now().toEpochMilli())
+			.build());
+		assembly.updatedAt = Instant.now().toEpochMilli();
+	}
+
+	private void applyMetricQueryResult(ExplainAssembly assembly, String metricCode, String summary) {
+		if (StringUtils.hasText(metricCode)) {
+			assembly.matchedMetrics.clear();
+			assembly.matchedMetrics.add(metricCode.trim());
+		}
+		assembly.toolSteps.add(ToolStepView.builder()
+			.toolName("metric.query.execute")
+			.title("指标查询执行")
+			.summary(summary)
+			.detail(metricCode)
+			.timestampEpochMs(Instant.now().toEpochMilli())
+			.build());
+		assembly.updatedAt = Instant.now().toEpochMilli();
+	}
+
 	private void applyClarifyAssessment(ExplainAssembly assembly, QueryClarifyAssessment assessment) {
 		assembly.clarify.put("riskLevel", assessment.riskLevel().value());
 		assembly.clarify.put("clarifyRequired", assessment.clarifyRequired());
@@ -387,6 +449,12 @@ public class AnswerTraceExplainStore {
 
 		private String decisionReason;
 
+		private String routeType;
+
+		private String capabilityId;
+
+		private final List<String> matchedMetrics = new ArrayList<>();
+
 		private String resultScope;
 
 		private final List<String> usedTables = new ArrayList<>();
@@ -421,6 +489,9 @@ public class AnswerTraceExplainStore {
 				.datasource(datasource)
 				.sql(sql)
 				.decisionReason(decisionReason)
+				.routeType(routeType)
+				.capabilityId(capabilityId)
+				.matchedMetrics(List.copyOf(matchedMetrics))
 				.resultScope(resultScope)
 				.usedTables(List.copyOf(usedTables))
 				.usedColumns(List.copyOf(usedColumns))
@@ -458,6 +529,13 @@ public class AnswerTraceExplainStore {
 		private String sql;
 
 		private String decisionReason;
+
+		private String routeType;
+
+		private String capabilityId;
+
+		@Builder.Default
+		private List<String> matchedMetrics = List.of();
 
 		private String resultScope;
 

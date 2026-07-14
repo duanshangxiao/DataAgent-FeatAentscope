@@ -13,20 +13,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.alibaba.cloud.ai.dataagent;
+package com.alibaba.cloud.ai.dataagent.capability;
 
-import org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration;
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.scheduling.annotation.EnableScheduling;
+public enum CapabilityRouteType {
 
-@EnableScheduling
-//@SpringBootApplication
-@SpringBootApplication(exclude = { PgVectorStoreAutoConfiguration.class })
-public class DataAgentApplication {
+	METRIC_ONLY,
 
-	public static void main(String[] args) {
-		SpringApplication.run(DataAgentApplication.class, args);
-	}
+	DB_ONLY,
+
+	MIXED,
+
+	UNKNOWN,
+
+	ABSTAIN
 
 }

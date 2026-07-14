@@ -43,7 +43,7 @@ public class AgentRuntimeExtensionFactory {
 	private final AgentScopeSkillBoxFactory skillBoxFactory;
 
 	public AgentRuntimeExtensions create(AgentRequest request, @Nullable AgentRuntimeEventPublisher eventPublisher,
-			Map<String, ToolCallback> toolCallbacks, PreparedMemory preparedMemory) {
+			Map<String, ToolCallback> toolCallbacks, PreparedMemory preparedMemory, String skillInstructions) {
 		Toolkit toolkit = toolkitFactory.buildToolkit(toolCallbacks);
 		SkillBox skillBox = skillBoxFactory.create(request.getAgentId(), toolkit);
 		Memory memory = preparedMemory == null ? memoryFactory.create(request).memory() : preparedMemory.memory();
@@ -58,7 +58,8 @@ public class AgentRuntimeExtensionFactory {
 		Map<String, Object> attributes = new HashMap<>();
 		attributes.put("threadId", request.getThreadId());
 		attributes.put("memoryLoadedFromNative", preparedMemory != null && preparedMemory.loadedFromNative());
-		return new AgentRuntimeExtensions(toolkit, memory, toolExecutionContext, hooks, attributes, skillBox, "");
+		return new AgentRuntimeExtensions(toolkit, memory, toolExecutionContext, hooks, attributes, skillBox,
+				skillInstructions);
 	}
 
 }

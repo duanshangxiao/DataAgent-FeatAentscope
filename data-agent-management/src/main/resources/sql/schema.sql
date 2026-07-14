@@ -1,3 +1,4 @@
+SET NAMES utf8mb4;
 -- 简化的数据库初始化脚本，兼容Spring Boot SQL初始化
 
 -- 智能体表

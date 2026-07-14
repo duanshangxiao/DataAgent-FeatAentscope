@@ -1,3 +1,4 @@
+SET NAMES utf8mb4;
 -- 插入用户数据
 INSERT INTO users (username, email) VALUES
 ('alice', 'alice@example.com'),

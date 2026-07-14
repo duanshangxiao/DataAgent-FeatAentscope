@@ -7,6 +7,7 @@
 - 后端主工程：`data-agent-management`
 - 前端主工程：`data-agent-frontend`
 - 文档与重构状态：`docs/todolist.md`
+- 项目架构说明：`docs/ARCHITECTURE.md`（技术栈、包结构、核心设计）
 - SQL 基线：`data-agent-management/src/main/resources/sql/`
 
 默认先看后端，再看前端，最后同步文档。

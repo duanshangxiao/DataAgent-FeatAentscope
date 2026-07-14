@@ -19,6 +19,7 @@
    <p>
     <a href="#-项目简介">项目简介</a> • 
     <a href="#-核心特性">核心特性</a> • 
+    <a href="#-指标能力实现与维护说明">指标能力说明</a> • 
     <a href="#-快速开始">快速开始</a> • 
     <a href="#-文档导航">文档导航</a> • 
     <a href="#-加入社区--贡献">加入社区</a>
@@ -51,6 +52,7 @@
 | **人工反馈机制** | 独创的 Human-in-the-loop 机制，支持用户在计划生成阶段进行干预和调整。 |
 | **RAG 检索增强** | 集成向量数据库，支持对业务元数据、术语库的语义检索，提升 SQL生成准确率。 |
 | **多模型调度** | 内置模型注册表，支持运行时动态切换不同的 LLM 和 Embedding 模型。 |
+| **指标能力路由** | 支持将标准指标问题路由到独立指标系统，避免通过 SQL 重算已有业务指标。 |
 | **MCP 服务器** | 遵循 MCP 协议，支持作为 Tool Server 对外提供 NL2SQL 和 智能体管理能力。 |
 | **API Key 管理** | 完善的 API Key 生命周期管理，支持细粒度的权限控制。 |
 
@@ -86,6 +88,91 @@ npm install && npm run dev
 ### 3. 访问系统
 打开浏览器访问 `http://localhost:3000`，开始创建您的第一个数据智能体！
 
+## 📊 指标能力实现与维护说明
+
+### 需求背景
+
+为了避免标准业务指标完全依赖数据库 SQL 重新计算，系统新增了一个可选的“指标 capability”。当用户问题命中标准指标语义时，Agent 会优先调用外部指标系统，而不是直接暴露数据库工具给模型。这样做的目标有三点：
+
+1. 保证标准指标口径统一，减少 SQL 重算带来的口径偏差。
+2. 将“标准指标查询”与“数据库明细分析”分流，降低模型误用工具的概率。
+3. 为后续混合问题编排打基础，例如“先查 GMV，再补充明细原因分析”。
+
+当前实现覆盖了实施方案中的阶段 1 到阶段 4：能力框架、Swagger 同步、指标工具、运行时路由、技能开关与 explain 记录。`MIXED` 类型已经具备路由与提示约束，但尚未扩展成复杂的多阶段执行编排器。
+
+### 启用方式
+
+指标能力默认关闭。需要同时满足以下条件才会生效：
+
+1. 在 `data-agent-management/src/main/resources/application.yml` 中开启 `spring.ai.alibaba.data-agent.capabilities.metric-system.enabled=true`，或通过环境变量覆盖。
+2. 配置指标系统 Swagger 地址和业务接口基础地址：
+   - `DATA_AGENT_METRIC_SWAGGER_URL`
+   - `DATA_AGENT_METRIC_BASE_URL`
+3. 在 Agent 的 skill 配置中启用内置 skill `builtin-metric-system`。
+
+推荐配置示例：
+
+```yaml
+spring:
+  ai:
+    alibaba:
+      data-agent:
+        capabilities:
+          metric-system:
+            enabled: true
+            swagger-url: ${DATA_AGENT_METRIC_SWAGGER_URL:}
+            base-url: ${DATA_AGENT_METRIC_BASE_URL:}
+            refresh-interval-seconds: 1800
+            route-threshold: 0.75
+            timeout-ms: 10000
+```
+
+### 核心实现位置
+
+下列文件是后续维护指标能力时最常需要查看的入口：
+
+| 文件 | 作用 |
+| :--- | :--- |
+| `data-agent-management/src/main/java/com/alibaba/cloud/ai/dataagent/capability/CapabilityProvider.java` | capability 通用扩展接口 |
+| `data-agent-management/src/main/java/com/alibaba/cloud/ai/dataagent/capability/CapabilityRoutingService.java` | 路由判定、工具裁剪、运行时指令生成 |
+| `data-agent-management/src/main/java/com/alibaba/cloud/ai/dataagent/capability/metric/MetricCapabilityProvider.java` | 指标 capability 主实现，包含目录同步、检索、工具与执行逻辑 |
+| `data-agent-management/src/main/java/com/alibaba/cloud/ai/dataagent/agentscope/service/impl/AiAgentRuntimeServiceImpl.java` | 在运行时接入 capability 路由 |
+| `data-agent-management/src/main/java/com/alibaba/cloud/ai/dataagent/agentscope/runtime/AgentRuntimeExtensionFactory.java` | 将路由生成的 runtime instructions 注入 Agent 执行上下文 |
+| `data-agent-management/src/main/java/com/alibaba/cloud/ai/dataagent/service/skill/impl/LocalSkillServiceImpl.java` | 注册内置 skill `builtin-metric-system` |
+| `data-agent-management/src/main/java/com/alibaba/cloud/ai/dataagent/observability/AnswerTraceExplainStore.java` | 记录路由结果、指标目录检索、指标查询摘要 |
+| `docs/duan/data-agent-metric-capability-implementation-plan.md` | 详细技术方案、分阶段目标与测试要求 |
+
+### 运行链路
+
+当前指标能力的执行链路如下：
+
+1. 系统启动后，`MetricOpenApiSyncService` 拉取 Swagger/OpenAPI 文档并构建指标目录索引。
+2. 用户发起提问后，`AiAgentRuntimeServiceImpl` 会在主执行前调用 `CapabilityRoutingService`。
+3. 若判定为 `METRIC_ONLY`，运行时只保留指标相关工具；若为 `DB_ONLY`，则移除指标工具。
+4. 模型通过 `metric.catalog.search` 检索候选指标，通过 `metric.catalog.describe` 查看口径，通过 `metric.query.execute` 真正发起指标查询。
+5. 指标工具调用结果会被写入 `AnswerTraceExplainStore`，供 explain 查询与故障排查使用。
+
+### 维护建议
+
+后续如果需要扩展或修改该能力，建议遵循以下原则：
+
+1. **改 Swagger 解析逻辑时**：优先补 `MetricOpenApiParser` 和目录搜索相关测试，避免不同 OpenAPI 方言导致目录丢失。
+2. **改路由阈值或关键词规则时**：同步检查 `CapabilityRoutingService` 与 `MetricCapabilityProvider` 的测试样例，确保 `METRIC_ONLY / DB_ONLY / MIXED / UNKNOWN` 四类行为稳定。
+3. **新增指标工具时**：同时更新 skill 文案、runtime instructions、explain 记录，否则模型虽然能看到工具，但不会稳定使用。
+4. **改接口请求/响应结构时**：优先审查 `MetricQueryExecutionService` 的请求构造与结果归一化逻辑，避免调用成功但模型拿不到结构化结果。
+5. **拆分类文件时**：当前指标实现为降低改造成本被集中在 `MetricCapabilityProvider.java` 中，后续若继续演进，建议按 `openapi / catalog / execution / tool / model` 拆分。
+6. **执行构建时**：项目启用了 JaCoCo 包级覆盖率校验，涉及 capability 的修改需要补单测，否则 `install` 可能因覆盖率不足失败。
+
+### 推荐测试关注点
+
+每次修改指标能力后，至少回归以下内容：
+
+1. Swagger 解析是否仍能正确生成指标目录。
+2. 指标目录检索是否能稳定返回 Top 命中项。
+3. 路由是否会正确裁剪数据库工具和指标工具。
+4. 指标系统异常时，返回给模型的错误是否清晰可解释。
+5. explain 接口中是否能看到路由摘要、指标目录检索和指标执行步骤。
+
 ## 📚 文档导航
 
 | 文档 | 此文档包含的内容 |
@@ -95,6 +182,7 @@ npm install && npm run dev
 | [开发者指南](docs/DEVELOPER_GUIDE.md) | 开发环境搭建、详细配置手册、代码规范、扩展开发(向量库/模型) |
 | [高级功能](docs/ADVANCED_FEATURES.md) | API Key 调用、MCP 服务器配置、自定义混合检索策略、Python执行器配置 |
 | [知识配置最佳实践](docs/KNOWLEDGE_USAGE.md) | 语义模型，业务知识，智能体知识的解释和使用 |
+| [指标能力实施方案](docs/duan/data-agent-metric-capability-implementation-plan.md) | 指标 capability 的需求背景、分阶段实施计划、技术方案与测试要求 |
 
 ## 🤝 加入社区 & 贡献
 

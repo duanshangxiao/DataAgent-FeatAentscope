@@ -15,10 +15,7 @@
  */
 package com.alibaba.cloud.ai.dataagent.config;
 
-import com.alibaba.cloud.ai.dataagent.properties.AgentSkillProperties;
-import com.alibaba.cloud.ai.dataagent.properties.CodeExecutorProperties;
-import com.alibaba.cloud.ai.dataagent.properties.DataAgentProperties;
-import com.alibaba.cloud.ai.dataagent.properties.FileStorageProperties;
+import com.alibaba.cloud.ai.dataagent.properties.*;
 import com.alibaba.cloud.ai.dataagent.service.vectorstore.SimpleVectorStoreInitialization;
 import com.alibaba.cloud.ai.dataagent.splitter.SentenceSplitter;
 import com.alibaba.cloud.ai.transformer.splitter.RecursiveCharacterTextSplitter;
@@ -75,7 +72,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Configuration
 @EnableAsync
 @EnableConfigurationProperties({ DataAgentProperties.class, FileStorageProperties.class, CodeExecutorProperties.class,
-		AgentSkillProperties.class })
+		AgentSkillProperties.class, PgVectorDatasourceProperties.class, MetricCapabilityProperties.class })
 public class DataAgentConfiguration implements DisposableBean {
 
 	/**

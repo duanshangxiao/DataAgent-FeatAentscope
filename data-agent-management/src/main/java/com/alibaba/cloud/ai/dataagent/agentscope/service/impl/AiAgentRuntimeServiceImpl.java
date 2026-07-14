@@ -23,6 +23,8 @@ import com.alibaba.cloud.ai.dataagent.agentscope.runtime.PreparedMemory;
 import com.alibaba.cloud.ai.dataagent.agentscope.runtime.QueryClarifyService;
 import com.alibaba.cloud.ai.dataagent.agentscope.runtime.QueryClarifyService.QueryClarifyAssessment;
 import com.alibaba.cloud.ai.dataagent.agentscope.runtime.AgentScopeToolkitFactory;
+import com.alibaba.cloud.ai.dataagent.capability.CapabilityRouteResult;
+import com.alibaba.cloud.ai.dataagent.capability.CapabilityRoutingService;
 import com.alibaba.cloud.ai.dataagent.agentscope.service.AgentScopeModelFactory;
 import com.alibaba.cloud.ai.dataagent.agentscope.service.AgentService;
 import com.alibaba.cloud.ai.dataagent.agentscope.session.AgentRuntimeRegistry;
@@ -92,6 +94,8 @@ public class AiAgentRuntimeServiceImpl implements AgentService {
 
 	private static final String AGENT_STATUS_OFFLINE = "offline";
 
+	private static final int TOOL_NAME_LOG_LIMIT = 12;
+
 	private final AgentRuntimeRegistry runtimeRegistry;
 
 	private final ModelConfigDataService modelConfigDataService;
@@ -124,6 +128,8 @@ public class AiAgentRuntimeServiceImpl implements AgentService {
 	private final QueryClarifyService queryClarifyService;
 
 	private final AgentScopeNativeSessionService nativeSessionService;
+
+	private final CapabilityRoutingService capabilityRoutingService;
 
 	@Override
 	public void graphStreamProcess(Sinks.Many<ServerSentEvent<AgentResponse>> sink, AgentRequest agentRequest) {
@@ -239,13 +245,30 @@ public class AiAgentRuntimeServiceImpl implements AgentService {
 				Agent managedAgentConfig = resolveManagedAgent(request.getAgentId());
 				ModelConfigDTO modelConfig = modelConfigDataService.getActiveConfigByType(ModelType.CHAT);
 				validateModelConfig(modelConfig);
-				Map<String, ToolCallback> toolCallbacks = agentScopeToolkitFactory
-					.getToolCallbacks(request.getAgentId());
+				Map<String, ToolCallback> baseToolCallbacks = agentScopeToolkitFactory.getToolCallbacks(request.getAgentId());
+				CapabilityRouteResult routeResult = capabilityRoutingService.route(request.getAgentId(), request.getQuery());
+				log.info(
+						"Capability routing resolved. agentId={}, threadId={}, runtimeRequestId={}, routeType={}, capabilityId={}, matchedTargets={}, reason={}, baseToolCount={}, metricToolCount={}, databaseToolCount={}",
+						request.getAgentId(), request.getThreadId(), request.getRuntimeRequestId(),
+						routeResult == null || routeResult.routeType() == null ? "null" : routeResult.routeType().name(),
+						routeResult == null ? "" : routeResult.matchedCapabilityId(),
+						routeResult == null ? List.of() : routeResult.matchedTargets(),
+						routeResult == null ? "" : routeResult.reason(), baseToolCallbacks.size(),
+						countToolsByPrefix(baseToolCallbacks, "metric."), countDatabaseTools(baseToolCallbacks));
+				answerTraceExplainStore.recordCapabilityRouting(request, routeResult);
+				Map<String, ToolCallback> toolCallbacks = capabilityRoutingService
+					.buildRoutedToolCallbacks(request.getAgentId(), routeResult, baseToolCallbacks);
+				log.info(
+						"Routed tool callbacks prepared. agentId={}, threadId={}, runtimeRequestId={}, routedToolCount={}, metricToolCount={}, databaseToolCount={}, toolNames={}",
+						request.getAgentId(), request.getThreadId(), request.getRuntimeRequestId(), toolCallbacks.size(),
+						countToolsByPrefix(toolCallbacks, "metric."), countDatabaseTools(toolCallbacks),
+						summarizeToolNames(toolCallbacks));
+				String runtimeInstructions = capabilityRoutingService.buildRuntimeInstructions(routeResult);
 				Model model = agentScopeModelFactory.create(dynamicModelFactory.createChatModel(modelConfig),
 						modelConfig.getModelName(), toolCallbacks);
 				ManagedAgent managedAgent = managedAgentRegistry.getRequired();
 				AgentRuntimeExtensions runtimeExtensions = agentRuntimeExtensionFactory.create(request, eventPublisher,
-						toolCallbacks, preparedMemory);
+						toolCallbacks, preparedMemory, runtimeInstructions);
 				Msg response;
 				try {
 					response = managedAgent.run(new AgentRunContext(request.getAgentId(), request.getThreadId(), model,
@@ -556,6 +579,30 @@ public class AiAgentRuntimeServiceImpl implements AgentService {
 			current = current.getCause();
 		}
 		return false;
+	}
+
+	private int countToolsByPrefix(Map<String, ToolCallback> toolCallbacks, String prefix) {
+		if (toolCallbacks == null || toolCallbacks.isEmpty() || !StringUtils.hasText(prefix)) {
+			return 0;
+		}
+		return (int) toolCallbacks.keySet().stream().filter(name -> name != null && name.startsWith(prefix)).count();
+	}
+
+	private int countDatabaseTools(Map<String, ToolCallback> toolCallbacks) {
+		if (toolCallbacks == null || toolCallbacks.isEmpty()) {
+			return 0;
+		}
+		return (int) toolCallbacks.keySet()
+			.stream()
+			.filter(name -> name != null && (name.startsWith("datasource.") || "sql_guard.check".equals(name)))
+			.count();
+	}
+
+	private List<String> summarizeToolNames(Map<String, ToolCallback> toolCallbacks) {
+		if (toolCallbacks == null || toolCallbacks.isEmpty()) {
+			return List.of();
+		}
+		return toolCallbacks.keySet().stream().sorted().limit(TOOL_NAME_LOG_LIMIT).toList();
 	}
 
 	private static final class StreamTextTracker {

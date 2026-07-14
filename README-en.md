@@ -19,6 +19,7 @@
    <p>
     <a href="#-introduction">Introduction</a> •
     <a href="#-core-features">Core Features</a> •
+    <a href="#-metric-capability-maintenance-notes">Metric Capability</a> •
     <a href="#-quick-start">Quick Start</a> •
     <a href="#-documentation">Documentation</a> •
     <a href="#-community--contribution">Community</a>
@@ -51,6 +52,7 @@ Additionally, this project natively supports **MCP (Model Context Protocol)**, e
 | **Human Feedback Mechanism** | Innovative Human-in-the-loop mechanism, supporting user intervention and adjustments during the plan generation phase. |
 | **RAG Retrieval Enhancement** | Integrated vector database, supporting semantic retrieval of business metadata and terminology libraries to improve SQL generation accuracy. |
 | **Multi-Model Orchestration** | Built-in model registry, supporting runtime dynamic switching between different LLM and Embedding models. |
+| **Metric Capability Routing** | Routes standard metric questions to a dedicated metric system instead of recalculating business metrics with SQL. |
 | **MCP Server** | Compliant with MCP protocol, supporting external provision of NL2SQL and agent management capabilities as a Tool Server. |
 | **API Key Management** | Comprehensive API Key lifecycle management with fine-grained permission control. |
 
@@ -86,6 +88,46 @@ npm install && npm run dev
 ### 3. Access the System
 Open your browser and visit `http://localhost:3000` to start creating your first data agent!
 
+## Metric Capability Maintenance Notes
+
+### Why this capability exists
+
+The project now includes an optional metric capability so that standard business metrics can be queried from an external metric system instead of being recomputed from SQL every time. This helps maintain consistent metric definitions, reduces prompt misuse of database tools, and prepares the runtime for mixed questions such as "query GMV first, then explain details from the warehouse".
+
+The current implementation covers phase 1 to phase 4 of the design plan: capability abstraction, Swagger synchronization, metric tools, runtime routing, skill toggle, and explain tracing. `MIXED` is already recognized at routing and prompt-instruction level, but not yet implemented as a full multi-step orchestrator.
+
+### How to enable it
+
+The capability is disabled by default. It becomes active only when all of the following are true:
+
+1. `spring.ai.alibaba.data-agent.capabilities.metric-system.enabled=true`
+2. Both endpoints are configured:
+   - `DATA_AGENT_METRIC_SWAGGER_URL`
+   - `DATA_AGENT_METRIC_BASE_URL`
+3. The Agent enables the built-in skill `builtin-metric-system`
+
+### Main code locations
+
+| File | Responsibility |
+| :--- | :--- |
+| `data-agent-management/src/main/java/com/alibaba/cloud/ai/dataagent/capability/CapabilityProvider.java` | Common capability abstraction |
+| `data-agent-management/src/main/java/com/alibaba/cloud/ai/dataagent/capability/CapabilityRoutingService.java` | Route decision, tool filtering, runtime instructions |
+| `data-agent-management/src/main/java/com/alibaba/cloud/ai/dataagent/capability/metric/MetricCapabilityProvider.java` | Main metric capability implementation |
+| `data-agent-management/src/main/java/com/alibaba/cloud/ai/dataagent/agentscope/service/impl/AiAgentRuntimeServiceImpl.java` | Runtime entry that invokes capability routing |
+| `data-agent-management/src/main/java/com/alibaba/cloud/ai/dataagent/agentscope/runtime/AgentRuntimeExtensionFactory.java` | Injects routing instructions into runtime extensions |
+| `data-agent-management/src/main/java/com/alibaba/cloud/ai/dataagent/service/skill/impl/LocalSkillServiceImpl.java` | Registers `builtin-metric-system` |
+| `data-agent-management/src/main/java/com/alibaba/cloud/ai/dataagent/observability/AnswerTraceExplainStore.java` | Stores routing and metric tool summaries for explain |
+| `docs/duan/data-agent-metric-capability-implementation-plan.md` | Detailed design and staged delivery plan |
+
+### Maintenance tips
+
+1. When changing Swagger parsing, always update parser and catalog-search tests together.
+2. When changing routing keywords or thresholds, verify all `METRIC_ONLY / DB_ONLY / MIXED / UNKNOWN` paths.
+3. When adding metric tools, also update skill copy, runtime instructions, and explain tracing.
+4. When changing HTTP request/response contracts, review metric request building and result normalization together.
+5. The current metric implementation is intentionally concentrated in one file for low-risk delivery. If the feature keeps growing, split it into `openapi / catalog / execution / tool / model`.
+6. The module uses package-level JaCoCo checks. Capability changes usually require tests, otherwise `install` may fail because of coverage gates.
+
 ## Documentation
 
 | Document | Contents |
@@ -95,6 +137,7 @@ Open your browser and visit `http://localhost:3000` to start creating your first
 | [Developer Guide](docs/DEVELOPER_GUIDE.md) | Development environment setup, detailed configuration manual, coding standards, extension development (vector DB/models) |
 | [Advanced Features](docs/ADVANCED_FEATURES.md) | API Key invocation, MCP server configuration, custom hybrid retrieval strategies, Python executor configuration |
 | [Knowledge Configuration Best Practices](docs/KNOWLEDGE_USAGE.md) | Explanation and usage of semantic models, business knowledge, and agent knowledge |
+| [Metric Capability Plan](docs/duan/data-agent-metric-capability-implementation-plan.md) | Background, staged implementation plan, technical design, and testing requirements for the metric capability |
 
 ## Community & Contribution
 

@@ -1,3 +1,4 @@
+SET NAMES utf8mb4;
 -- 用户表
 CREATE TABLE users (
                        id INT PRIMARY KEY AUTO_INCREMENT COMMENT '用户ID，主键自增',
