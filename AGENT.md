@@ -6,8 +6,11 @@
 
 - 后端主工程：`data-agent-management`
 - 前端主工程：`data-agent-frontend`
+- 会话自动注入配置：`opencode.json`（控制哪些文档在会话启动时加载）
 - 文档与重构状态：`docs/todolist.md`
 - 项目架构说明：`docs/ARCHITECTURE.md`（技术栈、包结构、核心设计）
+- 历史教训：`docs/LESSONS.md`（bug 根因、踩坑记录）
+- Vibe Coding 文档体系说明：`docs/VIBE_CODING.md`（给维护者看的索引）
 - SQL 基线：`data-agent-management/src/main/resources/sql/`
 
 默认先看后端，再看前端，最后同步文档。
@@ -120,6 +123,8 @@
 - 当前待办只保留未完成项
 - 如果实现决策发生变化，必须把旧口径一起改掉
 - `todolist` 是当前重构状态的单一事实源
+- 每次修复非直觉的 bug 或踩坑后，追加记录到 `docs/LESSONS.md`
+- 新增/删除/重命名 vibe coding 文档时，更新 `docs/VIBE_CODING.md` 索引表
 
 ## 6. 验证要求
 
