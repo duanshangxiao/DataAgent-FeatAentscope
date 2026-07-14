@@ -276,6 +276,7 @@ class MetricOpenApiSyncService {
 
 }
 
+@Slf4j
 @Component
 class MetricCatalogIndex {
 

@@ -20,8 +20,9 @@
       <div class="header-content">
         <div class="brand-section">
           <div class="brand-logo">
-            <i class="bi bi-robot"></i>
-            <span class="brand-text">Spring AI Alibaba Data Agent</span>
+            <img src="@/assets/travelsky-logo.jpg" alt="TravelSky" class="brand-logo-img" />
+            <img src="@/assets/huadongkaiya-logo.jpeg" alt="Huadong Kaiya" class="brand-logo-img" />
+            <span class="brand-text">Spring AI TravelSky Data Agent</span>
           </div>
           <nav class="header-nav">
             <div class="nav-item" :class="{ active: isAgentPage() }" @click="goToAgentList">
@@ -123,9 +124,10 @@
     color: #1e293b;
   }
 
-  .brand-logo i {
-    font-size: 1.5rem;
-    color: #3b82f6;
+  .brand-logo-img {
+    height: 2rem;
+    width: auto;
+    border-radius: 4px;
   }
 
   .header-nav {

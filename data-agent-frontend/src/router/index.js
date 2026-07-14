@@ -39,9 +39,9 @@ let hasShownWarning = false;
 router.beforeEach(async (to, from, next) => {
   // 设置页面标题
   if (to.meta?.title) {
-    document.title = `${to.meta.title} - Spring AI Alibaba Data Agent`;
+    document.title = `${to.meta.title} - Spring AI TravelSky Data Agent`;
   } else {
-    document.title = 'Spring AI Alibaba Data Agent';
+    document.title = 'Spring AI TravelSky Data Agent';
   }
 
   if (to.path === '/model-config') {
@@ -67,7 +67,7 @@ router.beforeEach(async (to, from, next) => {
       // 只在首次显示提示，避免重复提示
       if (!hasShownWarning) {
         ElMessage.warning({
-          message: `欢迎使用！检测到您尚未配置${missingModels.join('和')}，请先配置 OpenAI/阿里/Ollama 等模型参数以激活系统。`,
+          message: `欢迎使用！检测到您尚未配置${missingModels.join('和')}，请先配置 OpenAI/DashScope/Ollama 等模型参数以激活系统。`,
           duration: 5000,
         });
         hasShownWarning = true;

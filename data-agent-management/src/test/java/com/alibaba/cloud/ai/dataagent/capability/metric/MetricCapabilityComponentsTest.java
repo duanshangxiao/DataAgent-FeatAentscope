@@ -31,9 +31,11 @@ class MetricCapabilityComponentsTest {
 
 	private final ObjectMapper objectMapper = new ObjectMapper();
 
+	private final MetricCapabilityProperties properties = new MetricCapabilityProperties();
+
 	@Test
 	void parser_extractsMetricDefinitionsFromOpenApi() throws Exception {
-		MetricOpenApiParser parser = new MetricOpenApiParser(objectMapper);
+		MetricOpenApiParser parser = new MetricOpenApiParser(objectMapper, properties);
 
 		List<MetricDefinition> definitions = parser.parse(objectMapper.readTree("""
 				{
@@ -97,7 +99,7 @@ class MetricCapabilityComponentsTest {
 
 	@Test
 	void parser_supportsWildcardContentAndSkipsCrudEndpoints() throws Exception {
-		MetricOpenApiParser parser = new MetricOpenApiParser(objectMapper);
+		MetricOpenApiParser parser = new MetricOpenApiParser(objectMapper, properties);
 
 		List<MetricDefinition> definitions = parser.parse(objectMapper.readTree("""
 				{
@@ -177,7 +179,7 @@ class MetricCapabilityComponentsTest {
 
 	@Test
 	void parser_usesFirstAvailableContentSchemaWhenJsonMediaTypeMissing() throws Exception {
-		MetricOpenApiParser parser = new MetricOpenApiParser(objectMapper);
+		MetricOpenApiParser parser = new MetricOpenApiParser(objectMapper, properties);
 
 		List<MetricDefinition> definitions = parser.parse(objectMapper.readTree("""
 				{
@@ -228,7 +230,7 @@ class MetricCapabilityComponentsTest {
 
 	@Test
 	void catalogSearch_returnsTopMatchBasedOnApiSummaryAndDescription() {
-		MetricCatalogIndex index = new MetricCatalogIndex();
+		MetricCatalogIndex index = new MetricCatalogIndex(properties, null);
 		index.refresh(List.of(MetricDefinition.builder()
 			.metricCode("foo_api")
 			.metricName("无关编码")
@@ -258,7 +260,7 @@ class MetricCapabilityComponentsTest {
 
 	@Test
 	void execute_returnsClarificationWhenRequiredParameterMissing() {
-		MetricCatalogIndex index = new MetricCatalogIndex();
+		MetricCatalogIndex index = new MetricCatalogIndex(properties, null);
 		index.refresh(List.of(MetricDefinition.builder()
 			.metricCode("store_sales_trend")
 			.metricName("门店销售额趋势")
@@ -275,7 +277,7 @@ class MetricCapabilityComponentsTest {
 		MetricCapabilityProperties properties = new MetricCapabilityProperties();
 		properties.setBaseUrl("http://localhost:18080");
 		MetricQueryExecutionService service = new MetricQueryExecutionService(index, properties, WebClient.builder(),
-				objectMapper);
+				new MetricCircuitBreaker(), objectMapper);
 		MetricQueryRequest request = new MetricQueryRequest();
 		request.setOperationId("storeSalesTrend");
 		request.setQuery("查询最近7天销售额趋势");
@@ -293,7 +295,7 @@ class MetricCapabilityComponentsTest {
 		MetricCapabilityProperties properties = new MetricCapabilityProperties();
 		properties.setEnabled(true);
 		properties.setRouteThreshold(0.6D);
-		MetricCatalogIndex index = new MetricCatalogIndex();
+		MetricCatalogIndex index = new MetricCatalogIndex(properties, null);
 		index.refresh(List.of(MetricDefinition.builder()
 			.metricCode("store_sales_trend")
 			.metricName("门店销售额趋势")
@@ -304,7 +306,8 @@ class MetricCapabilityComponentsTest {
 			.path("/metrics/store/sales/trend")
 			.requestParameters(List.of(MetricApiParameter.builder().name("storeId").location("query").required(true).build()))
 			.build()));
-		MetricCapabilityProvider provider = new MetricCapabilityProvider(properties, null, index, null, null) {
+		MetricCapabilityProvider provider = new MetricCapabilityProvider(properties, null, index, null, null,
+				new MetricCircuitBreaker()) {
 			@Override
 			public boolean enabledForAgent(String agentId) {
 				return true;
