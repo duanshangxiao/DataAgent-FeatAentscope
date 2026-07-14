@@ -42,7 +42,7 @@
 - 改 MySQL 基线时，至少同步：
   - `src/main/resources/sql/schema.sql`
   - `src/test/resources/sql/schema.sql`
-- 如果是旧库兼容问题，要在文档里明确“需要手工对齐”，不要偷偷加启动时自动修库
+- 如果是旧库兼容问题，要在文档里明确"需要手工对齐"，不要偷偷加启动时自动修库
 
 ## 3. 修改原则
 
@@ -86,24 +86,32 @@
 
 ## 4. 代码风格
 
+详细编码规范参见以下文档：
+- **后端 Java**：`docs/DEVELOPER_GUIDE.md`（JavaDoc、命名、4空格缩进、120字符行宽）和 `CONTRIBUTING-zh.md`（Spring 代码格式）
+- **前端 Vue/TS**：`data-agent-frontend/README-CODE-STYLE.md`（Prettier、ESLint、vue-tsc）
+
 ### 4.1 后端
 
 - 沿用当前 Java / Spring Boot / MyBatis 风格
 - 以最小必要改动为原则，不做无关重构
 - 注释可以写中文，但保持短而直接
 - 公共默认值优先集中定义，避免散落魔法字符串
-- 兼容逻辑必须“对外兼容、对内收敛”，不要把旧值继续传进核心路径
+- 兼容逻辑必须"对外兼容、对内收敛"，不要把旧值继续传进核心路径
 
-### 4.2 前端
+### 4.2 前端（面向 AI agent 编码）
 
-- 沿用现有 Vue 组件写法，不强推额外抽象
+- 沿用现有 Vue 3 + TypeScript + Element Plus 组件写法，不强推额外抽象
 - 改接口时同步检查：
   - 保存参数
   - 编辑回填
   - 状态按钮
   - 批量操作
   - 完成后的 reload 行为
-- 不要出现“UI 看起来能配，实际没落库”的假功能
+- 不要出现"UI 看起来能配，实际没落库"的假功能
+- Vue 组件使用 PascalCase 命名，变量/函数使用 camelCase
+- 接口类型优先使用 `interface` 而非 `type`，避免使用 `any`
+- 修改前端请求参数时，同步检查 `api/` 层 -> 组件调用 -> 后端 DTO 是否对齐
+- 新增组件时，必须检查 `router/index.ts` 路由注册和侧边栏菜单配置
 
 ## 5. 文档与待办
 
@@ -128,6 +136,11 @@ mvn -pl data-agent-management -am -DskipTests compile
 - 改了组件交互状态
 
 如果没有跑某项验证，要在结果里明确说明。
+
+编译失败时的处理：
+- 定位编译错误的具体文件和行号
+- 修复后重新编译直到通过
+- 如果因为缺少依赖或环境问题无法编译，必须在改动说明中列出
 
 ## 7. 提交前检查清单
 

@@ -106,6 +106,8 @@ public class AgentVectorStoreService {
 
 ## 🎨 编码规范
 
+> AI agent 编码时还应遵循 `AGENT.md` 中的约束和禁止事项，以及 `CONTRIBUTING-zh.md` 中的 Spring 代码格式要求。
+
 ### Java 编码规范
 
 1. **命名规范**
