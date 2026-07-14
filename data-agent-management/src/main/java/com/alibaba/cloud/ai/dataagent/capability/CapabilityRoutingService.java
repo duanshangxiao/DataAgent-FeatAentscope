@@ -107,7 +107,8 @@ public class CapabilityRoutingService {
 					当前问题已被识别为标准指标问题。
 					1. 优先使用 `metric.catalog.search`、`metric.catalog.describe`、`metric.query.execute`。
 					2. 不允许改用数据库 SQL 自行计算标准指标。
-					3. 如果指标系统报错，应直接说明指标系统暂时不可用，不要静默回退到 SQL 重算。
+					3. 如果 `metric.query.execute` 返回 FALLBACK_TO_DB 状态（指标系统熔断），则降级使用数据库工具链做近似计算，并在回答中注明"非标准口径，可能存在偏差"。
+					4. 如果指标系统报错（非熔断），应直接说明指标系统暂时不可用。
 					""".trim();
 			case DB_ONLY, ABSTAIN -> """
 					当前问题已被识别为数据库问题。
@@ -137,11 +138,16 @@ public class CapabilityRoutingService {
 		boolean metricTool = toolName.startsWith("metric.");
 		boolean databaseTool = toolName.startsWith("datasource.") || SQL_GUARD_TOOL.equals(toolName);
 		return switch (routeResult.routeType()) {
-			case METRIC_ONLY -> !databaseTool;
+			case METRIC_ONLY -> !databaseTool || isBasicSchemaTool(toolName);
 			case DB_ONLY, ABSTAIN -> !metricTool;
 			case MIXED -> true;
 			case UNKNOWN -> !metricTool && !databaseTool;
 		};
+	}
+
+	private boolean isBasicSchemaTool(String toolName) {
+		// 保留基础 schema 工具作为降级备用，但不暴露数据探查工具
+		return toolName.equals("datasource.explorer") || toolName.startsWith("datasource.explorer.");
 	}
 
 	private int countMetricTools(Map<String, ToolCallback> toolCallbacks) {

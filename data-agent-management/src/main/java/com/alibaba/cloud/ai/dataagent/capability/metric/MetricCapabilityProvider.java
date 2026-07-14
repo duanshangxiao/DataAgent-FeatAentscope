@@ -31,6 +31,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Duration;
@@ -52,6 +54,7 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ToolContext;
+import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -80,6 +83,12 @@ public class MetricCapabilityProvider implements CapabilityProvider {
 
 	private final MetricOpenApiSyncService metricOpenApiSyncService;
 
+	private final MetricCircuitBreaker circuitBreaker;
+
+	private final Cache<Long, Boolean> skillBindingCache = Caffeine.newBuilder()
+		.maximumSize(100)
+		.build();
+
 	@Override
 	public String capabilityId() {
 		return CAPABILITY_ID;
@@ -88,35 +97,39 @@ public class MetricCapabilityProvider implements CapabilityProvider {
 	@Override
 	public boolean enabledForAgent(String agentId) {
 		if (!properties.isEnabled()) {
-			log.info("Metric capability disabled by configuration. agentId={}", agentId);
 			return false;
 		}
 		if (!StringUtils.hasText(agentId)) {
-			log.info("Metric capability disabled because agentId is empty.");
 			return false;
 		}
 		if (!metricOpenApiSyncService.isReady()) {
-			log.info("Metric capability disabled because catalog is not ready. agentId={}, swaggerUrl={}", agentId,
-					properties.getSwaggerUrl());
 			return false;
 		}
 		try {
 			Long numericAgentId = Long.valueOf(agentId);
-			List<String> skillIds = agentSkillBindingService.listSkillIdsByAgentId(numericAgentId);
-			boolean enabled = skillIds.contains(LocalSkillService.BUILTIN_METRIC_SYSTEM_SKILL_ID);
-			log.info("Metric capability binding checked. agentId={}, enabled={}, skillIds={}", agentId, enabled, skillIds);
-			return enabled;
+			Boolean enabled = skillBindingCache.get(numericAgentId, this::loadSkillBinding);
+			return Boolean.TRUE.equals(enabled);
 		}
 		catch (NumberFormatException ex) {
-			log.warn("Metric capability disabled because agentId is not numeric. agentId={}", agentId);
 			return false;
 		}
+	}
+
+	private Boolean loadSkillBinding(Long numericAgentId) {
+		List<String> skillIds = agentSkillBindingService.listSkillIdsByAgentId(numericAgentId);
+		boolean enabled = skillIds.contains(LocalSkillService.BUILTIN_METRIC_SYSTEM_SKILL_ID);
+		log.debug("Metric capability skill binding loaded. agentId={}, enabled={}", numericAgentId, enabled);
+		return enabled;
 	}
 
 	@Override
 	public CapabilityRouteResult route(String agentId, String query) {
 		if (!enabledForAgent(agentId)) {
 			return CapabilityRouteResult.noMatch(capabilityId(), "指标能力未启用，不参与当前问题路由。");
+		}
+		if (circuitBreaker.isOpen()) {
+			log.warn("Metric circuit breaker is OPEN, falling back to DB routing. agentId={}", agentId);
+			return CapabilityRouteResult.noMatch(capabilityId(), "指标系统熔断，回退数据库链路。");
 		}
 		if (!StringUtils.hasText(query)) {
 			return CapabilityRouteResult.unknown(capabilityId(), 0D, List.of(), "问题为空，无法判断能力归属。");
@@ -160,6 +173,9 @@ public class MetricCapabilityProvider implements CapabilityProvider {
 
 	@Override
 	public void refreshMetadata() {
+		skillBindingCache.invalidateAll();
+		circuitBreaker.configure(properties.getCircuitBreakerFailureThreshold(),
+				properties.getCircuitBreakerOpenDurationMs(), (int) properties.getCircuitBreakerHalfOpenMaxCalls());
 		metricOpenApiSyncService.refreshCatalog();
 	}
 
@@ -263,7 +279,19 @@ class MetricOpenApiSyncService {
 @Component
 class MetricCatalogIndex {
 
+	private final MetricCapabilityProperties properties;
+
+	private final EmbeddingModel embeddingModel;
+
 	private final AtomicReference<Map<String, MetricDefinition>> definitionsRef = new AtomicReference<>(Map.of());
+
+	private final AtomicReference<Map<String, float[]>> embeddingCache = new AtomicReference<>(Map.of());
+
+	public MetricCatalogIndex(MetricCapabilityProperties properties,
+			@org.springframework.beans.factory.annotation.Autowired(required = false) EmbeddingModel embeddingModel) {
+		this.properties = properties;
+		this.embeddingModel = embeddingModel;
+	}
 
 	public void refresh(Collection<MetricDefinition> definitions) {
 		Map<String, MetricDefinition> refreshed = new LinkedHashMap<>();
@@ -276,6 +304,25 @@ class MetricCatalogIndex {
 			}
 		}
 		definitionsRef.set(Map.copyOf(refreshed));
+		if (properties.isEmbeddingEnabled() && embeddingModel != null && !refreshed.isEmpty()) {
+			buildEmbeddingCache(refreshed);
+		}
+	}
+
+	private void buildEmbeddingCache(Map<String, MetricDefinition> definitions) {
+		Map<String, float[]> cache = new LinkedHashMap<>();
+		try {
+			for (Map.Entry<String, MetricDefinition> entry : definitions.entrySet()) {
+				String text = searchableText(entry.getValue());
+				float[] embedding = embeddingModel.embed(text);
+				cache.put(entry.getKey(), embedding);
+			}
+			embeddingCache.set(cache);
+			log.info("Metric catalog embedding cache built. definitionCount={}", cache.size());
+		}
+		catch (Exception ex) {
+			log.warn("Failed to build metric embedding cache, falling back to keyword search only.", ex);
+		}
 	}
 
 	public boolean isAvailable() {
@@ -303,10 +350,24 @@ class MetricCatalogIndex {
 		if (!StringUtils.hasText(query) || definitionsRef.get().isEmpty()) {
 			return List.of();
 		}
+		Map<String, MetricDefinition> definitions = definitionsRef.get();
+		// Stage 1: embedding coarse ranking (if available)
+		List<String> candidateIds = embeddingCoarseRank(query, definitions);
+		List<MetricDefinition> candidateDefinitions;
+		if (candidateIds.isEmpty()) {
+			candidateDefinitions = List.copyOf(definitions.values());
+		}
+		else {
+			candidateDefinitions = candidateIds.stream()
+				.map(definitions::get)
+				.filter(java.util.Objects::nonNull)
+				.toList();
+		}
+		// Stage 2: keyword fine ranking
 		String normalizedQuery = normalize(query);
 		List<String> keywords = tokenize(query);
 		List<MetricCatalogSearchCandidate> candidates = new ArrayList<>();
-		for (MetricDefinition definition : definitionsRef.get().values()) {
+		for (MetricDefinition definition : candidateDefinitions) {
 			double score = score(normalizedQuery, keywords, definition);
 			if (score <= 0D) {
 				continue;
@@ -324,26 +385,67 @@ class MetricCatalogIndex {
 			.toList();
 	}
 
+	private List<String> embeddingCoarseRank(String query, Map<String, MetricDefinition> definitions) {
+		Map<String, float[]> cache = embeddingCache.get();
+		if (cache.isEmpty() || embeddingModel == null || !properties.isEmbeddingEnabled()) {
+			return List.of();
+		}
+		try {
+			float[] queryEmbedding = embeddingModel.embed(query);
+			return cache.entrySet()
+				.stream()
+				.map(entry -> new java.util.AbstractMap.SimpleEntry<>(entry.getKey(),
+						cosineSimilarity(queryEmbedding, entry.getValue())))
+				.sorted(Map.Entry.<String, Double>comparingByValue().reversed())
+				.limit(properties.getEmbeddingTopK())
+				.filter(entry -> entry.getValue() > 0.3D)
+				.map(Map.Entry::getKey)
+				.toList();
+		}
+		catch (Exception ex) {
+			log.debug("Embedding coarse ranking failed, falling back to keyword-only. query={}", query, ex);
+			return List.of();
+		}
+	}
+
+	private double cosineSimilarity(float[] a, float[] b) {
+		if (a == null || b == null || a.length != b.length) {
+			return 0D;
+		}
+		double dotProduct = 0D;
+		double normA = 0D;
+		double normB = 0D;
+		for (int i = 0; i < a.length; i++) {
+			dotProduct += a[i] * b[i];
+			normA += a[i] * a[i];
+			normB += b[i] * b[i];
+		}
+		if (normA == 0D || normB == 0D) {
+			return 0D;
+		}
+		return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+	}
+
 	private double score(String normalizedQuery, List<String> keywords, MetricDefinition definition) {
 		String haystack = searchableText(definition);
 		double score = 0D;
 		if (containsText(normalizedQuery, definition.summary())) {
-			score += 0.45D;
+			score += properties.getSummaryWeight();
 		}
 		if (containsText(normalizedQuery, definition.description())) {
-			score += 0.30D;
+			score += properties.getDescriptionWeight();
 		}
 		if (containsText(normalizedQuery, definition.operationId())) {
-			score += 0.10D;
+			score += properties.getOperationIdWeight();
 		}
 		for (String tag : definition.tags()) {
 			if (containsText(normalizedQuery, tag)) {
-				score += 0.15D;
+				score += properties.getTagWeight();
 			}
 		}
 		for (MetricApiParameter parameter : definition.requestParameters()) {
 			if (containsText(normalizedQuery, parameter.name()) || containsText(normalizedQuery, parameter.description())) {
-				score += parameter.required() ? 0.12D : 0.06D;
+				score += parameter.required() ? properties.getRequiredParamWeight() : properties.getOptionalParamWeight();
 			}
 		}
 		int keywordHits = 0;
@@ -354,7 +456,8 @@ class MetricCatalogIndex {
 			}
 		}
 		if (!keywords.isEmpty()) {
-			score += Math.min(0.4D, keywordHits * 1.0D / keywords.size() * 0.4D);
+			double keywordWeight = properties.getKeywordHitWeight();
+			score += Math.min(keywordWeight, keywordHits * 1.0D / keywords.size() * keywordWeight);
 		}
 		return score;
 	}
@@ -452,6 +555,8 @@ class MetricCatalogIndex {
 class MetricOpenApiParser {
 
 	private final ObjectMapper objectMapper;
+
+	private final MetricCapabilityProperties properties;
 
 	private final ThreadLocal<String> currentPath = new ThreadLocal<>();
 
@@ -930,7 +1035,10 @@ class MetricOpenApiParser {
 		}
 		String searchableText = joinText(path, text(operation, "summary"), text(operation, "description"),
 				String.join(" ", readStringList(operation.path("tags"))));
-		return matchesKeyword(searchableText, "metric", "metrics", "指标", "gmv", "dau", "mau", "留存", "活跃");
+		List<String> keywords = properties.getMetricKeywords();
+		return keywords == null || keywords.isEmpty()
+				? matchesKeyword(searchableText, "metric", "指标")
+				: matchesKeyword(searchableText, keywords.toArray(new String[0]));
 	}
 
 	private List<String> buildAliases(JsonNode operation, String metricName) {
@@ -1332,6 +1440,8 @@ class MetricQueryExecutionService {
 
 	private final WebClient.Builder webClientBuilder;
 
+	private final MetricCircuitBreaker circuitBreaker;
+
 	private final ObjectMapper objectMapper;
 
 	public MetricQueryResult execute(MetricQueryRequest request) {
@@ -1345,11 +1455,36 @@ class MetricQueryExecutionService {
 		if (!preparedRequest.readyToExecute()) {
 			return buildClarificationResult(definition, preparedRequest);
 		}
+		if (!circuitBreaker.allowRequest()) {
+			log.warn("Metric circuit breaker blocked request. apiId={}", definition.apiId());
+			return buildCircuitBreakerResult(definition, preparedRequest);
+		}
 		log.info("Executing metric HTTP request. apiId={}, metricName={}, method={}, path={}", definition.apiId(),
 				definition.metricName(), definition.httpMethod(), definition.path());
 		long startTime = System.currentTimeMillis();
-		JsonNode response = executeHttp(definition, preparedRequest);
-		return normalize(definition, response, System.currentTimeMillis() - startTime, preparedRequest.arguments());
+		try {
+			JsonNode response = executeHttp(definition, preparedRequest);
+			circuitBreaker.recordSuccess();
+			return normalize(definition, response, System.currentTimeMillis() - startTime, preparedRequest.arguments());
+		}
+		catch (Exception ex) {
+			circuitBreaker.recordFailure();
+			log.warn("Metric query execution failed, circuit breaker recorded failure. apiId={}", definition.apiId(), ex);
+			throw new IllegalStateException("指标查询失败：" + ex.getMessage(), ex);
+		}
+	}
+
+	private MetricQueryResult buildCircuitBreakerResult(MetricDefinition definition, PreparedMetricRequest preparedRequest) {
+		Map<String, Object> metadata = new LinkedHashMap<>();
+		metadata.put("sourceType", "metric-system");
+		metadata.put("status", "CIRCUIT_OPEN");
+		metadata.put("apiId", definition.apiId());
+		metadata.put("circuitBreakerState", circuitBreaker.getState().name());
+		return MetricQueryResult.builder()
+			.status("FALLBACK_TO_DB")
+			.summary("指标系统当前不可用（熔断保护中），建议使用数据库查询作为降级方案。")
+			.metadata(metadata)
+			.build();
 	}
 
 	private PreparedMetricRequest prepare(MetricDefinition definition, MetricQueryRequest request) {

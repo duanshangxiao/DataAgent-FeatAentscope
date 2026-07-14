@@ -15,6 +15,7 @@
  */
 package com.alibaba.cloud.ai.dataagent.properties;
 
+import java.util.List;
 import com.alibaba.cloud.ai.dataagent.constant.Constant;
 import lombok.Getter;
 import lombok.Setter;
@@ -54,5 +55,43 @@ public class MetricCapabilityProperties {
 	 * 指标 HTTP 调用超时时间，单位毫秒。
 	 */
 	private long timeoutMs = 10000L;
+
+	/**
+	 * 是否启用 embedding 语义检索，默认开启（需要 EmbeddingModel 可用）。
+	 */
+	private boolean embeddingEnabled = true;
+
+	/**
+	 * Embedding 粗排召回数量，再做关键词精排。
+	 */
+	private int embeddingTopK = 10;
+
+	// --- 路由评分权重 ---
+
+	private double summaryWeight = 0.45d;
+
+	private double descriptionWeight = 0.30d;
+
+	private double operationIdWeight = 0.10d;
+
+	private double tagWeight = 0.15d;
+
+	private double requiredParamWeight = 0.12d;
+
+	private double optionalParamWeight = 0.06d;
+
+	private double keywordHitWeight = 0.40d;
+
+	// --- 熔断器配置 ---
+
+	private int circuitBreakerFailureThreshold = 3;
+
+	private long circuitBreakerOpenDurationMs = 30_000L;
+
+	private long circuitBreakerHalfOpenMaxCalls = 2;
+
+	// --- 指标接口识别关键词 ---
+
+	private List<String> metricKeywords = List.of("metric", "metrics", "指标", "gmv", "dau", "mau", "留存", "活跃");
 
 }
