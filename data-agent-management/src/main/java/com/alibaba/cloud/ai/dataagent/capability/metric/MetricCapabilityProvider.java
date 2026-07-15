@@ -26,15 +26,14 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class MetricCapabilityProvider implements CapabilityProvider {
 
 	public static final String CAPABILITY_ID = "metric-system";
@@ -49,10 +48,24 @@ public class MetricCapabilityProvider implements CapabilityProvider {
 
 	private final MetricCircuitBreaker circuitBreaker;
 
+	private final MetricCapabilityStatus metricCapabilityStatus;
+
 	private final Cache<Long, Boolean> skillBindingCache = Caffeine.newBuilder()
 		.maximumSize(100)
 		.expireAfterWrite(60, TimeUnit.SECONDS)
 		.build();
+
+	public MetricCapabilityProvider(MetricCapabilityProperties properties,
+			AgentSkillBindingService agentSkillBindingService, MetricToolProvider metricToolProvider,
+			@Lazy MetricOpenApiSyncService metricOpenApiSyncService, MetricCircuitBreaker circuitBreaker,
+			MetricCapabilityStatus metricCapabilityStatus) {
+		this.properties = properties;
+		this.agentSkillBindingService = agentSkillBindingService;
+		this.metricToolProvider = metricToolProvider;
+		this.metricOpenApiSyncService = metricOpenApiSyncService;
+		this.circuitBreaker = circuitBreaker;
+		this.metricCapabilityStatus = metricCapabilityStatus;
+	}
 
 	@Override
 	public String capabilityId() {
@@ -67,7 +80,7 @@ public class MetricCapabilityProvider implements CapabilityProvider {
 		if (!StringUtils.hasText(agentId)) {
 			return false;
 		}
-		if (!metricOpenApiSyncService.isReady()) {
+		if (!metricCapabilityStatus.isReady()) {
 			return false;
 		}
 		try {
