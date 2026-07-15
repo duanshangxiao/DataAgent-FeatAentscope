@@ -42,6 +42,8 @@ import org.springframework.web.reactive.function.client.WebClient;
 @RequiredArgsConstructor
 class MetricOpenApiSyncService {
 
+	private static final int EMBEDDING_BATCH_SIZE = 10;
+
 	private final MetricCapabilityProperties properties;
 
 	private final WebClient.Builder webClientBuilder;
@@ -151,7 +153,11 @@ class MetricOpenApiSyncService {
 		for (MetricDefinition definition : definitions) {
 			documents.add(DocumentConverterUtil.convertMetricToDocument(Constant.METRIC_GLOBAL_AGENT_ID, definition));
 		}
-		agentVectorStoreService.addDocuments(Constant.METRIC_GLOBAL_AGENT_ID, documents);
+		for (int i = 0; i < documents.size(); i += EMBEDDING_BATCH_SIZE) {
+			int end = Math.min(i + EMBEDDING_BATCH_SIZE, documents.size());
+			agentVectorStoreService.addDocuments(Constant.METRIC_GLOBAL_AGENT_ID,
+					documents.subList(i, end));
+		}
 	}
 
 	public boolean isReady() {
