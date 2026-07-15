@@ -21,7 +21,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 @ManagedResource(objectName = "com.alibaba.cloud.ai.dataagent:type=MetricCapability", description = "指标目录健康状态")
-class MetricCapabilityStatus {
+public class MetricCapabilityStatus {
 
 	private volatile boolean ready;
 
