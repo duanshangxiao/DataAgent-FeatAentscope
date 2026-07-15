@@ -16,9 +16,12 @@
 package com.alibaba.cloud.ai.dataagent.controller;
 
 import com.alibaba.cloud.ai.dataagent.capability.metric.MetricCapabilityStatus;
+import com.alibaba.cloud.ai.dataagent.capability.metric.MetricDefinition;
+import com.alibaba.cloud.ai.dataagent.capability.metric.MetricDefinitionLookup;
 import com.alibaba.cloud.ai.dataagent.capability.metric.MetricOpenApiSyncService;
 import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +41,8 @@ public class MetricCapabilityController {
 	private final MetricCapabilityStatus metricCapabilityStatus;
 
 	private final MetricOpenApiSyncService metricOpenApiSyncService;
+
+	private final MetricDefinitionLookup metricDefinitionLookup;
 
 	private static final String STATE_READY = "ready";
 
@@ -60,6 +65,11 @@ public class MetricCapabilityController {
 		result.put("lastRefreshError", metricCapabilityStatus.getLastRefreshError());
 		result.put("circuitBreakerState", metricCapabilityStatus.getCircuitBreakerState());
 		return ResponseEntity.ok(result);
+	}
+
+	@GetMapping("/definitions")
+	public ResponseEntity<List<MetricDefinition>> definitions() {
+		return ResponseEntity.ok(metricDefinitionLookup.listAll());
 	}
 
 	@PostMapping("/refresh")

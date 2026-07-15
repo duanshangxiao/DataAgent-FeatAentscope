@@ -15,20 +15,17 @@
  */
 package com.alibaba.cloud.ai.dataagent.capability.metric;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-/**
- * 指标定义内存查找器，仅用于执行路径按 apiId/operationId 查找完整定义（参数 schema 等）。
- * <p>
- * 搜索/排序已迁移至 PGVector，本类不再负责检索。
- */
 @Component
-class MetricDefinitionLookup {
+public class MetricDefinitionLookup {
 
 	private final AtomicReference<Map<String, MetricDefinition>> definitionsRef = new AtomicReference<>(Map.of());
 
@@ -59,6 +56,10 @@ class MetricDefinitionLookup {
 					|| identifier.trim().equalsIgnoreCase(definition.metricCode())
 					|| identifier.trim().equalsIgnoreCase(definition.path()))
 			.findFirst();
+	}
+
+	public List<MetricDefinition> listAll() {
+		return new ArrayList<>(definitionsRef.get().values());
 	}
 
 	boolean isAvailable() {
