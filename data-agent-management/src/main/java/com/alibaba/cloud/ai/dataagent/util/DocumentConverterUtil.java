@@ -129,42 +129,31 @@ public class DocumentConverterUtil {
 
 	public static Document convertMetricToDocument(String agentId, MetricDefinition definition) {
 		StringBuilder content = new StringBuilder();
-		content.append("指标编码: ").append(definition.metricCode()).append("\n");
-		content.append("指标名称: ").append(definition.metricName()).append("\n");
+		content.append(definition.metricCode()).append(" ");
+		content.append(definition.metricName()).append(" ");
 		if (definition.summary() != null) {
-			content.append("接口描述: ").append(definition.summary()).append("\n");
-		}
-		if (definition.description() != null) {
-			content.append("详细说明: ").append(definition.description()).append("\n");
+			content.append(definition.summary()).append(" ");
 		}
 		if (definition.aliases() != null && !definition.aliases().isEmpty()) {
-			content.append("别名: ").append(String.join(", ", definition.aliases())).append("\n");
-		}
-		if (definition.tags() != null && !definition.tags().isEmpty()) {
-			content.append("标签: ").append(String.join(", ", definition.tags())).append("\n");
-		}
-		List<MetricApiParameter> params = definition.requestParameters();
-		if (params != null && !params.isEmpty()) {
-			content.append("可用参数: ");
-			List<String> paramDescs = new java.util.ArrayList<>();
-			for (MetricApiParameter p : params) {
-				StringBuilder pd = new StringBuilder(p.name());
-				if (p.description() != null) {
-					pd.append("(").append(p.description()).append(")");
-				}
-				if (p.enumValues() != null && !p.enumValues().isEmpty()) {
-					pd.append("[").append(String.join("/", p.enumValues())).append("]");
-				}
-				paramDescs.add(pd.toString());
-			}
-			content.append(String.join(", ", paramDescs)).append("\n");
+			content.append(String.join(" ", definition.aliases()));
 		}
 		Map<String, Object> metadata = new HashMap<>();
 		metadata.put(DocumentMetadataConstant.VECTOR_TYPE, DocumentMetadataConstant.METRIC);
 		metadata.put(Constant.AGENT_ID, agentId);
 		metadata.put(DocumentMetadataConstant.METRIC_CODE, definition.metricCode());
 		metadata.put(DocumentMetadataConstant.OPERATION_ID, definition.operationId());
-		return new Document(content.toString(), metadata);
+		metadata.put("description", definition.description() != null ? definition.description() : "");
+		metadata.put("httpMethod", definition.httpMethod());
+		metadata.put("path", definition.path());
+		List<MetricApiParameter> params = definition.requestParameters();
+		if (params != null && !params.isEmpty()) {
+			List<String> paramNames = new java.util.ArrayList<>();
+			for (MetricApiParameter p : params) {
+				paramNames.add(p.name());
+			}
+			metadata.put("requestParameters", String.join(",", paramNames));
+		}
+		return new Document(content.toString().trim(), metadata);
 	}
 
 	public static Document convertQaFaqKnowledgeToDocument(AgentKnowledge knowledge) {

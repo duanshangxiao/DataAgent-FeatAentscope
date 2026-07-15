@@ -141,6 +141,8 @@ class MetricToolProvider {
 
 	private final AgentVectorStoreService agentVectorStoreService;
 
+	private final MetricDefinitionLookup metricDefinitionLookup;
+
 	private final MetricQueryExecutionService metricQueryExecutionService;
 
 	private final AnswerTraceExplainStore answerTraceExplainStore;
@@ -201,6 +203,10 @@ class MetricToolProvider {
 					item.put("apiId", document.getMetadata().get(DocumentMetadataConstant.OPERATION_ID));
 					item.put("content", document.getText());
 					item.put("score", document.getScore());
+					Object params = document.getMetadata().get("requestParameters");
+					if (params != null) {
+						item.put("requestParameters", params);
+					}
 					candidates.add(item);
 				}
 				result.put("candidates", candidates);
@@ -226,7 +232,7 @@ class MetricToolProvider {
 
 		private final ToolDefinition toolDefinition = ToolDefinition.builder()
 			.name(DESCRIBE_TOOL)
-			.description("返回某个指标接口的完整契约定义。")
+			.description("返回某个指标接口的完整契约定义，含参数名、类型、是否必填、枚举值、默认值。")
 			.inputSchema(DESCRIBE_SCHEMA)
 			.build();
 
@@ -248,13 +254,9 @@ class MetricToolProvider {
 				String identifier = pickIdentifier(input.path("operationId").asText(),
 						input.path("metricCode").asText());
 				log.info("Metric catalog describe invoked. identifier={}", identifier);
-				List<Document> documents = agentVectorStoreService.getDocumentsForAgent(
-						Constant.METRIC_GLOBAL_AGENT_ID, identifier,
-						DocumentMetadataConstant.METRIC, 1, 0D);
-				if (documents.isEmpty()) {
-					throw new IllegalArgumentException("未找到指标接口定义：" + identifier);
-				}
-				return objectMapper.writeValueAsString(documents.get(0));
+				MetricDefinition definition = metricDefinitionLookup.get(identifier)
+					.orElseThrow(() -> new IllegalArgumentException("未找到指标接口定义：" + identifier));
+				return objectMapper.writeValueAsString(definition);
 			}
 			catch (Exception ex) {
 				log.warn("Metric catalog describe failed. toolInput={}", toolInput, ex);
