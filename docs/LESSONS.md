@@ -89,6 +89,19 @@
 
 ---
 
+## 2026-07-15: Spring Bean 循环依赖 — 两次启动失败
+
+- **现象**：`mvn compile` 通过但 `spring-boot:run` 报 `APPLICATION FAILED TO START`，循环依赖。第一次：`MetricCapabilityProvider → MetricOpenApiSyncService → VectorStore`；第二次：`@Scheduled(fixedDelayString = '#{@metricOpenApiSyncService...}')` 在 bean 初始化期间通过 SpEL 自引用
+- **共性根因**：
+  1. `compile` 不检查 Spring 容器初始化，循环依赖、bean 后处理器冲突都是运行时故障
+  2. 改动 Bean 构造器依赖/注解（`@Scheduled`、`@Component` 注入关系）后没有做容器级验证
+- **修复**：
+  1. `MetricCapabilityProvider` 删除对 `MetricOpenApiSyncService`（基础设施层）的注入，改用轻量 `MetricCapabilityStatus`
+  2. `@Scheduled` SpEL 从 `#{@self}` 改为 `${property:default}000` 属性占位符
+- **教训**：[已写入 AGENT.md §6] 修改 Bean 注入/构造器/依赖关系/`@Scheduled`/`@Async`/`@Configuration` 后必须执行 `mvn spring-boot:run` 启动验证，不能在 `compile` 通过后就认为完成
+
+---
+
 ## 模板
 
 ```markdown

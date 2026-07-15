@@ -134,7 +134,19 @@
 mvn -pl data-agent-management -am -DskipTests compile
 ```
 
-满足以下任一情况时，额外补前端验证：
+**满足以下任一情况时，必须在编译后额外执行 `mvn spring-boot:run` 启动应用，确认容器能正常初始化，不出现 `APPLICATION FAILED TO START` 或循环依赖：**
+
+- 新增/修改了 Spring Bean 注入（构造器参数、`@Autowired`、`@RequiredArgsConstructor` 字段）
+- 新增/修改了 `@Component`、`@Service`、`@Configuration` 类的构造器依赖
+- 修改了 Bean 之间的依赖关系（新增引用、删除引用、改变引用方向）
+- 使用了 `@Scheduled`、`@Async`、`@EventListener` 等会触发 AOP 代理或 Bean 后处理的注解
+- 新增/修改了 `@ConfigurationProperties` 或 `@Bean` 工厂方法
+
+启动成功标准：日志中出现 `Started DataAgentApplication in X.XXX seconds`，无 `ERROR` 级别启动日志。
+
+如果数据库或外部依赖不可用导致无法启动，至少执行 `mvn spring-boot:run` 并确认失败原因是外部依赖（如 `Caused by: java.net.ConnectException`），而非容器初始化问题（如 `BeanCurrentlyInCreationException`、`The dependencies of some of the beans form a cycle`）。
+
+如果后端启动本身无报错，且满足以下任一情况时，额外补前端验证：
 
 - 改了前端请求参数
 - 改了前端展示逻辑
