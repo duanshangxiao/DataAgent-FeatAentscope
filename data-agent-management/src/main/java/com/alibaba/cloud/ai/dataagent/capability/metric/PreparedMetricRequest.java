@@ -13,29 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.alibaba.cloud.ai.dataagent.constant;
+package com.alibaba.cloud.ai.dataagent.capability.metric;
 
-/**
- * @author zhangshenghang
- */
-public final class Constant {
+import java.util.List;
+import java.util.Map;
+import lombok.Builder;
 
-	private Constant() {
+@Builder
+record PreparedMetricRequest(Map<String, Object> arguments, List<MetricApiParameter> missingRequiredParameters,
+		boolean readyToExecute) {
 
+	public PreparedMetricRequest {
+		arguments = arguments == null ? Map.of() : Map.copyOf(arguments);
+		missingRequiredParameters = missingRequiredParameters == null ? List.of() : List.copyOf(missingRequiredParameters);
 	}
-
-	public static final String PROJECT_PROPERTIES_PREFIX = "spring.ai.alibaba.data-agent";
-
-	public static final String AGENT_ID = "agentId";
-
-	public static final String DATASOURCE_ID = "datasourceId";
-
-	// 指标全局文档使用的 agentId（指标定义跨 agent 共享）
-	public static final String METRIC_GLOBAL_AGENT_ID = "global";
-
-	// StreamEvent 常量
-	public static final String STREAM_EVENT_COMPLETE = "complete";
-
-	public static final String STREAM_EVENT_ERROR = "error";
 
 }

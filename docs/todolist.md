@@ -9,6 +9,7 @@
 | 日期 | 事项 | 说明 |
 |------|------|------|
 | 2025-07 | 指标能力 (Metric Capability) | 插件式能力路由框架 + MetricCapabilityProvider，支持 OpenAPI 元数据同步 |
+| 2026-07-15 | 指标检索架构重构 — PGVector 替代自研检索 | 删除 MetricCatalogIndex 自研检索，指标元数据导入 PGVector；解析器接口化支持多格式切换；LLM 驱动的工具选择替代应用层硬路由 |
 
 ---
 

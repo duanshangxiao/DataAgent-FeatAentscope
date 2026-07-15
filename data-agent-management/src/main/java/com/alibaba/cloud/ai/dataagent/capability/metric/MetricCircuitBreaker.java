@@ -34,6 +34,8 @@ class MetricCircuitBreaker {
 
 	private volatile State state = State.CLOSED;
 
+	private final MetricCapabilityStatus metricCapabilityStatus;
+
 	private final AtomicInteger failureCount = new AtomicInteger(0);
 
 	private final AtomicLong lastFailureTime = new AtomicLong(0);
@@ -47,6 +49,11 @@ class MetricCircuitBreaker {
 	private volatile long openDurationMs = 30_000L;
 
 	private volatile int halfOpenMaxCalls = 2;
+
+	MetricCircuitBreaker(MetricCapabilityStatus metricCapabilityStatus) {
+		this.metricCapabilityStatus = metricCapabilityStatus;
+		metricCapabilityStatus.markCircuitBreakerState(state.name());
+	}
 
 	void configure(int failureThreshold, long openDurationMs, int halfOpenMaxCalls) {
 		this.failureThreshold = failureThreshold;
@@ -114,6 +121,7 @@ class MetricCircuitBreaker {
 					openDurationMs);
 		}
 		state = State.OPEN;
+		metricCapabilityStatus.markCircuitBreakerState(state.name());
 		failureCount.set(0);
 		halfOpenSuccessCount.set(0);
 		halfOpenTotalCalls.set(0);
@@ -122,6 +130,7 @@ class MetricCircuitBreaker {
 	private void transitionHalfOpen() {
 		log.info("Metric circuit breaker HALF_OPEN. halfOpenMaxCalls={}", halfOpenMaxCalls);
 		state = State.HALF_OPEN;
+		metricCapabilityStatus.markCircuitBreakerState(state.name());
 		halfOpenSuccessCount.set(0);
 		halfOpenTotalCalls.set(0);
 	}
@@ -129,6 +138,7 @@ class MetricCircuitBreaker {
 	private void transitionClosed() {
 		log.info("Metric circuit breaker CLOSED.");
 		state = State.CLOSED;
+		metricCapabilityStatus.markCircuitBreakerState(state.name());
 		failureCount.set(0);
 		halfOpenSuccessCount.set(0);
 		halfOpenTotalCalls.set(0);

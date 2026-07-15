@@ -1,0 +1,308 @@
+/*
+ * Copyright 2024-2026 the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.alibaba.cloud.ai.dataagent.capability.metric;
+
+import com.alibaba.cloud.ai.dataagent.agentscope.dto.AgentRequest;
+import com.alibaba.cloud.ai.dataagent.agentscope.runtime.ToolContextRequestResolver;
+import com.alibaba.cloud.ai.dataagent.constant.Constant;
+import com.alibaba.cloud.ai.dataagent.constant.DocumentMetadataConstant;
+import com.alibaba.cloud.ai.dataagent.observability.AnswerTraceExplainStore;
+import com.alibaba.cloud.ai.dataagent.service.vectorstore.AgentVectorStoreService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.model.ToolContext;
+import org.springframework.ai.document.Document;
+import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.definition.ToolDefinition;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
+
+@Slf4j
+@Component
+@Qualifier("metricTool")
+@RequiredArgsConstructor
+class MetricToolProvider {
+
+	private static final String SEARCH_TOOL = "metric.catalog.search";
+
+	private static final String DESCRIBE_TOOL = "metric.catalog.describe";
+
+	private static final String EXECUTE_TOOL = "metric.query.execute";
+
+	private static final String SEARCH_SCHEMA = """
+			{
+			  "type": "object",
+			  "properties": {
+			    "query": {
+			      "type": "string",
+			      "description": "用于检索候选指标的自然语言问题。"
+			    },
+			    "limit": {
+			      "type": "integer",
+			      "description": "返回候选指标数量上限，默认 5。"
+			    }
+			  },
+			  "required": ["query"]
+			}
+			""";
+
+	private static final String DESCRIBE_SCHEMA = """
+			{
+			  "type": "object",
+			  "properties": {
+			    "operationId": {
+			      "type": "string",
+			      "description": "指标接口 operationId，推荐使用 search 返回的 apiId/operationId。"
+			    },
+			    "metricCode": {
+			      "type": "string",
+			      "description": "兼容旧调用方式的指标编码。"
+			    }
+			  },
+			  "required": []
+			}
+			""";
+
+	private static final String EXECUTE_SCHEMA = """
+			{
+			  "type": "object",
+			  "properties": {
+			    "operationId": {
+			      "type": "string",
+			      "description": "要执行的指标接口 operationId。"
+			    },
+			    "metricCode": {
+			      "type": "string",
+			      "description": "兼容旧调用方式的指标编码。"
+			    },
+			    "query": {
+			      "type": "string",
+			      "description": "原始自然语言问题，用于补参和缺参澄清。"
+			    },
+			    "arguments": {
+			      "type": "object",
+			      "description": "接口参数键值对，键名应与接口参数名或 body 字段名一致。"
+			    },
+			    "timeRange": {
+			      "type": "object",
+			      "properties": {
+			        "start": { "type": "string" },
+			        "end": { "type": "string" },
+			        "granularity": { "type": "string" },
+			        "timezone": { "type": "string" }
+			      }
+			    },
+			    "groupBy": {
+			      "type": "array",
+			      "items": { "type": "string" }
+			    },
+			    "filters": {
+			      "type": "array",
+			      "items": { "type": "object" }
+			    },
+			    "orderBy": {
+			      "type": "array",
+			      "items": { "type": "object" }
+			    },
+			    "limit": {
+			      "type": "integer"
+			    },
+			    "format": {
+			      "type": "string"
+			    }
+			  },
+			  "required": []
+			}
+			""";
+
+	private static final int DEFAULT_SEARCH_LIMIT = 5;
+
+	private static final double METRIC_SEARCH_THRESHOLD = 0.4D;
+
+	private final AgentVectorStoreService agentVectorStoreService;
+
+	private final MetricQueryExecutionService metricQueryExecutionService;
+
+	private final AnswerTraceExplainStore answerTraceExplainStore;
+
+	private final ObjectMapper objectMapper;
+
+	public Map<String, ToolCallback> getToolCallbacks() {
+		Map<String, ToolCallback> callbacks = new LinkedHashMap<>();
+		callbacks.put(SEARCH_TOOL, new MetricSearchToolCallback());
+		callbacks.put(DESCRIBE_TOOL, new MetricDescribeToolCallback());
+		callbacks.put(EXECUTE_TOOL, new MetricExecuteToolCallback());
+		return Map.copyOf(callbacks);
+	}
+
+	private String pickIdentifier(String operationId, String metricCode) {
+		if (StringUtils.hasText(operationId)) {
+			return operationId.trim();
+		}
+		return StringUtils.hasText(metricCode) ? metricCode.trim() : "";
+	}
+
+	private final class MetricSearchToolCallback implements ToolCallback {
+
+		private final ToolDefinition toolDefinition = ToolDefinition.builder()
+			.name(SEARCH_TOOL)
+			.description("根据自然语言问题检索候选指标接口，结果按语义相似度排序。")
+			.inputSchema(SEARCH_SCHEMA)
+			.build();
+
+		@Override
+		public ToolDefinition getToolDefinition() {
+			return toolDefinition;
+		}
+
+		@Override
+		public String call(String toolInput) {
+			return call(toolInput, null);
+		}
+
+		@Override
+		public String call(String toolInput, ToolContext toolContext) {
+			try {
+				ObjectNode input = StringUtils.hasText(toolInput) ? (ObjectNode) objectMapper.readTree(toolInput)
+						: objectMapper.createObjectNode();
+				String query = input.path("query").asText();
+				int limit = input.path("limit").asInt(DEFAULT_SEARCH_LIMIT);
+				log.info("Metric catalog search invoked via PGVector. query={}, limit={}", query, limit);
+				List<Document> documents = agentVectorStoreService.getDocumentsForAgent(
+						Constant.METRIC_GLOBAL_AGENT_ID, query, DocumentMetadataConstant.METRIC,
+						Math.max(limit, DEFAULT_SEARCH_LIMIT), METRIC_SEARCH_THRESHOLD);
+				Map<String, Object> result = new LinkedHashMap<>();
+				result.put("summary", "共匹配到 %d 个候选指标接口".formatted(documents.size()));
+				List<Map<String, Object>> candidates = new ArrayList<>();
+				for (Document document : documents) {
+					Map<String, Object> item = new LinkedHashMap<>();
+					item.put("metricCode", document.getMetadata().get(DocumentMetadataConstant.METRIC_CODE));
+					item.put("operationId", document.getMetadata().get(DocumentMetadataConstant.OPERATION_ID));
+					item.put("apiId", document.getMetadata().get(DocumentMetadataConstant.OPERATION_ID));
+					item.put("content", document.getText());
+					item.put("score", document.getScore());
+					candidates.add(item);
+				}
+				result.put("candidates", candidates);
+				log.info("Metric catalog search completed via PGVector. query={}, matchedCount={}",
+						query, candidates.size());
+				AgentRequest agentRequest = ToolContextRequestResolver.resolveGraphRequest(toolContext);
+				List<String> apiIds = candidates.stream()
+					.map(c -> (String) c.get("apiId"))
+					.toList();
+				answerTraceExplainStore.recordMetricCatalogSearch(agentRequest, query,
+						(String) result.get("summary"), apiIds);
+				return objectMapper.writeValueAsString(result);
+			}
+			catch (Exception ex) {
+				log.warn("Metric catalog search failed. toolInput={}", toolInput, ex);
+				throw new IllegalStateException("指标目录检索失败：" + ex.getMessage(), ex);
+			}
+		}
+
+	}
+
+	private final class MetricDescribeToolCallback implements ToolCallback {
+
+		private final ToolDefinition toolDefinition = ToolDefinition.builder()
+			.name(DESCRIBE_TOOL)
+			.description("返回某个指标接口的完整契约定义。")
+			.inputSchema(DESCRIBE_SCHEMA)
+			.build();
+
+		@Override
+		public ToolDefinition getToolDefinition() {
+			return toolDefinition;
+		}
+
+		@Override
+		public String call(String toolInput) {
+			return call(toolInput, null);
+		}
+
+		@Override
+		public String call(String toolInput, ToolContext toolContext) {
+			try {
+				ObjectNode input = StringUtils.hasText(toolInput) ? (ObjectNode) objectMapper.readTree(toolInput)
+						: objectMapper.createObjectNode();
+				String identifier = pickIdentifier(input.path("operationId").asText(),
+						input.path("metricCode").asText());
+				log.info("Metric catalog describe invoked. identifier={}", identifier);
+				List<Document> documents = agentVectorStoreService.getDocumentsForAgent(
+						Constant.METRIC_GLOBAL_AGENT_ID, identifier,
+						DocumentMetadataConstant.METRIC, 1, 0D);
+				if (documents.isEmpty()) {
+					throw new IllegalArgumentException("未找到指标接口定义：" + identifier);
+				}
+				return objectMapper.writeValueAsString(documents.get(0));
+			}
+			catch (Exception ex) {
+				log.warn("Metric catalog describe failed. toolInput={}", toolInput, ex);
+				throw new IllegalStateException("读取指标接口定义失败：" + ex.getMessage(), ex);
+			}
+		}
+
+	}
+
+	private final class MetricExecuteToolCallback implements ToolCallback {
+
+		private final ToolDefinition toolDefinition = ToolDefinition.builder()
+			.name(EXECUTE_TOOL)
+			.description("按接口契约执行指标查询，缺少必填参数时返回澄清信息。")
+			.inputSchema(EXECUTE_SCHEMA)
+			.build();
+
+		@Override
+		public ToolDefinition getToolDefinition() {
+			return toolDefinition;
+		}
+
+		@Override
+		public String call(String toolInput) {
+			return call(toolInput, null);
+		}
+
+		@Override
+		public String call(String toolInput, ToolContext toolContext) {
+			try {
+				MetricQueryRequest request = objectMapper.readValue(toolInput, MetricQueryRequest.class);
+				log.info("Metric query execute invoked. operationId={}, metricCode={}, timeRange={}, limit={}",
+						request.getOperationId(), request.getMetricCode(), request.getTimeRange(), request.getLimit());
+				MetricQueryResult result = metricQueryExecutionService.execute(request);
+				log.info("Metric query execute completed. identifier={}, status={}, summary={}, rowCount={}",
+						pickIdentifier(request.getOperationId(), request.getMetricCode()), result.status(),
+						result.summary(), result.rows() == null ? 0 : result.rows().size());
+				AgentRequest agentRequest = ToolContextRequestResolver.resolveGraphRequest(toolContext);
+				answerTraceExplainStore.recordMetricQueryResult(agentRequest,
+						pickIdentifier(request.getOperationId(), request.getMetricCode()), result.summary());
+				return objectMapper.writeValueAsString(result);
+			}
+			catch (Exception ex) {
+				log.warn("Metric query execute failed. toolInput={}", toolInput, ex);
+				throw new IllegalStateException("指标查询失败：" + ex.getMessage(), ex);
+			}
+		}
+
+	}
+
+}

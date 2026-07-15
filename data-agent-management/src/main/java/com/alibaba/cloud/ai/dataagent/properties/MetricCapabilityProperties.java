@@ -32,6 +32,11 @@ public class MetricCapabilityProperties {
 	private boolean enabled;
 
 	/**
+	 * 指标元数据解析器格式（如 openapi3、custom-catalog）。
+	 */
+	private String parserFormat = "openapi3";
+
+	/**
 	 * 指标系统 OpenAPI 文档地址。
 	 */
 	private String swaggerUrl;
@@ -66,6 +71,11 @@ public class MetricCapabilityProperties {
 	 */
 	private int embeddingTopK = 10;
 
+	/**
+	 * Embedding 粗排最低相似度阈值，低于该值的候选不进入精排。
+	 */
+	private double embeddingMinSimilarity = 0.3D;
+
 	// --- 路由评分权重 ---
 
 	private double summaryWeight = 0.45d;
@@ -88,7 +98,19 @@ public class MetricCapabilityProperties {
 
 	private long circuitBreakerOpenDurationMs = 30_000L;
 
-	private long circuitBreakerHalfOpenMaxCalls = 2;
+	private int circuitBreakerHalfOpenMaxCalls = 2;
+
+	// --- 路由澄清阈值因子 ---
+
+	/**
+	 * 路由阈值乘以该因子得到澄清阈值下限。
+	 */
+	private double clarifyThresholdFactor = 0.6D;
+
+	/**
+	 * 澄清阈值最小下限（避免阈值过低导致误匹配）。
+	 */
+	private double minClarifyThreshold = 0.35D;
 
 	// --- 指标接口识别关键词 ---
 

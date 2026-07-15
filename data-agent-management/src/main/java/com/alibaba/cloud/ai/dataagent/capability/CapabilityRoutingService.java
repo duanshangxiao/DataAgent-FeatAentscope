@@ -42,26 +42,22 @@ public class CapabilityRoutingService {
 		CapabilityRouteResult best = null;
 		for (CapabilityProvider provider : enabledProviders) {
 			CapabilityRouteResult candidate = provider.route(agentId, query);
-			log.info("Capability provider evaluated query. agentId={}, provider={}, routeType={}, score={}, matchedTargets={}, reason={}",
+			log.info("Capability provider evaluated query. agentId={}, provider={}, routeType={}, reason={}",
 					agentId, provider.capabilityId(), candidate == null || candidate.routeType() == null ? "null"
 							: candidate.routeType().name(),
-					candidate == null ? null : candidate.score(), candidate == null ? List.of() : candidate.matchedTargets(),
 					candidate == null ? "" : candidate.reason());
 			if (candidate == null || candidate.routeType() == null
 					|| candidate.routeType() == CapabilityRouteType.ABSTAIN) {
 				continue;
 			}
-			if (best == null || candidate.score() > best.score()
-					|| (best.routeType() == CapabilityRouteType.UNKNOWN
-							&& candidate.routeType() != CapabilityRouteType.UNKNOWN)) {
+			if (best == null || candidate.score() > best.score()) {
 				best = candidate;
 			}
 		}
 		CapabilityRouteResult resolved = best == null ? CapabilityRouteResult.dbOnly("未匹配到 capability，继续走数据库链路。")
 				: best;
-		log.info("Capability routing final result. agentId={}, routeType={}, capabilityId={}, score={}, matchedTargets={}, reason={}",
-				agentId, resolved.routeType(), resolved.matchedCapabilityId(), resolved.score(), resolved.matchedTargets(),
-				resolved.reason());
+		log.info("Capability routing final result. agentId={}, routeType={}, capabilityId={}, reason={}",
+				agentId, resolved.routeType(), resolved.matchedCapabilityId(), resolved.reason());
 		return resolved;
 	}
 
@@ -69,96 +65,39 @@ public class CapabilityRoutingService {
 			Map<String, ToolCallback> baseToolCallbacks) {
 		Map<String, ToolCallback> routed = new LinkedHashMap<>();
 		if (baseToolCallbacks != null && !baseToolCallbacks.isEmpty()) {
-			baseToolCallbacks.forEach((name, callback) -> {
-				if (isToolAllowed(name, routeResult)) {
-					routed.putIfAbsent(name, callback);
-				}
-			});
+			routed.putAll(baseToolCallbacks);
 		}
 		if (routeResult == null || !StringUtils.hasText(routeResult.matchedCapabilityId())
-				|| routeResult.routeType() == CapabilityRouteType.DB_ONLY
-				|| routeResult.routeType() == CapabilityRouteType.UNKNOWN
 				|| routeResult.routeType() == CapabilityRouteType.ABSTAIN) {
-			log.info(
-					"Capability routed tool callbacks without extra capability tools. agentId={}, routeType={}, retainedToolCount={}, metricToolCount={}, databaseToolCount={}",
-					agentId, routeResult == null ? "null" : routeResult.routeType(), routed.size(), countMetricTools(routed),
-					countDatabaseTools(routed));
 			return routed;
 		}
 		capabilityRegistry.getProvider(routeResult.matchedCapabilityId())
-			.ifPresent(provider -> provider.getToolCallbacks(agentId).forEach((name, callback) -> {
-				if (isToolAllowed(name, routeResult)) {
-					routed.putIfAbsent(name, callback);
-				}
-			}));
-		log.info(
-				"Capability routed tool callbacks with capability tools. agentId={}, routeType={}, capabilityId={}, retainedToolCount={}, metricToolCount={}, databaseToolCount={}",
-				agentId, routeResult.routeType(), routeResult.matchedCapabilityId(), routed.size(), countMetricTools(routed),
-				countDatabaseTools(routed));
+			.ifPresent(provider -> provider.getToolCallbacks(agentId).forEach(routed::putIfAbsent));
+		log.info("Capability routed tool callbacks. agentId={}, capabilityId={}, totalToolCount={}",
+				agentId, routeResult.matchedCapabilityId(), routed.size());
 		return routed;
 	}
 
 	public String buildRuntimeInstructions(CapabilityRouteResult routeResult) {
-		if (routeResult == null) {
+		if (routeResult == null || routeResult.routeType() == null) {
 			return "";
 		}
-		return switch (routeResult.routeType()) {
-			case METRIC_ONLY -> """
-					当前问题已被识别为标准指标问题。
-					1. 优先使用 `metric.catalog.search`、`metric.catalog.describe`、`metric.query.execute`。
-					2. 不允许改用数据库 SQL 自行计算标准指标。
-					3. 如果 `metric.query.execute` 返回 FALLBACK_TO_DB 状态（指标系统熔断），则降级使用数据库工具链做近似计算，并在回答中注明"非标准口径，可能存在偏差"。
-					4. 如果指标系统报错（非熔断），应直接说明指标系统暂时不可用。
+		boolean metricAvailable = routeResult.routeType() == CapabilityRouteType.MIXED;
+		if (metricAvailable) {
+			return """
+					当前环境中指标系统可用。
+					1. 如果用户问题涉及标准指标查询，优先使用 metric.catalog.search 检索候选指标。
+					2. 使用 metric.catalog.describe 获取接口完整契约后，再调用 metric.query.execute 执行查询。
+					3. 如果 metric.catalog.search 未找到匹配的指标，可回退使用数据库工具链。
+					4. 如果 metric.query.execute 返回 FALLBACK_TO_DB 状态，降级使用数据库工具做近似计算，并在回答中注明"非标准口径，可能存在偏差"。
+					5. 如果指标系统报错（非熔断），直接说明指标系统暂时不可用。
 					""".trim();
-			case DB_ONLY, ABSTAIN -> """
-					当前问题已被识别为数据库问题。
-					1. 使用当前 datasource explorer、semantic、sql_guard 等数据库工具链。
-					2. 不要尝试指标系统工具。
-					""".trim();
-			case MIXED -> """
-					当前问题同时包含标准指标与数据库补充诉求。
-					1. 先拆分子问题。
-					2. 标准指标子问题必须走指标工具。
-					3. 非指标补充部分再走数据库工具。
-					4. 不允许用 SQL 重新计算已有标准指标。
-					5. 最后统一汇总回答。
-					""".trim();
-			case UNKNOWN -> """
-					当前问题的能力归属仍不明确。
-					1. 优先澄清关键指标名、时间口径或数据范围。
-					2. 在归属明确前，不要盲目调用数据库或指标系统工具。
-					""".trim();
-		};
-	}
-
-	private boolean isToolAllowed(String toolName, CapabilityRouteResult routeResult) {
-		if (!StringUtils.hasText(toolName) || routeResult == null) {
-			return true;
 		}
-		boolean metricTool = toolName.startsWith("metric.");
-		boolean databaseTool = toolName.startsWith("datasource.") || SQL_GUARD_TOOL.equals(toolName);
-		return switch (routeResult.routeType()) {
-			case METRIC_ONLY -> !databaseTool || isBasicSchemaTool(toolName);
-			case DB_ONLY, ABSTAIN -> !metricTool;
-			case MIXED -> true;
-			case UNKNOWN -> !metricTool && !databaseTool;
-		};
-	}
-
-	private boolean isBasicSchemaTool(String toolName) {
-		// 保留基础 schema 工具作为降级备用，但不暴露数据探查工具
-		return toolName.equals("datasource.explorer") || toolName.startsWith("datasource.explorer.");
-	}
-
-	private int countMetricTools(Map<String, ToolCallback> toolCallbacks) {
-		return (int) toolCallbacks.keySet().stream().filter(name -> name != null && name.startsWith("metric.")).count();
-	}
-
-	private int countDatabaseTools(Map<String, ToolCallback> toolCallbacks) {
-		return (int) toolCallbacks.keySet()
-			.stream()
-			.filter(name -> name != null && (name.startsWith("datasource.") || SQL_GUARD_TOOL.equals(name)))
-			.count();
+		return """
+				当前环境中指标系统不可用。
+				1. 使用 datasource explorer、semantic、sql_guard 等数据库工具链。
+				2. 不要尝试指标系统工具。
+				""".trim();
 	}
 
 }

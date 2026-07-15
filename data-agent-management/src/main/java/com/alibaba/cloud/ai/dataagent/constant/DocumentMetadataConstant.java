@@ -52,4 +52,13 @@ public final class DocumentMetadataConstant {
 	// businessTermId
 	public static final String DB_BUSINESS_TERM_ID = "businessTermId";
 
+	// metric
+	public static final String METRIC = "metric";
+
+	// metricCode
+	public static final String METRIC_CODE = "metricCode";
+
+	// operationId
+	public static final String OPERATION_ID = "operationId";
+
 }

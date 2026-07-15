@@ -13,29 +13,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.alibaba.cloud.ai.dataagent.constant;
+package com.alibaba.cloud.ai.dataagent.capability.metric;
+
+import java.util.List;
 
 /**
- * @author zhangshenghang
+ * 指标元数据解析器接口，支持不同格式的指标目录（OpenAPI、自定义 JSON 等）切换。
  */
-public final class Constant {
+public interface MetricMetadataParser {
 
-	private Constant() {
+	/**
+	 * 从原始文本中解析指标定义列表。
+	 * @param rawDocument 原始元数据文本
+	 * @return 解析出的指标定义列表
+	 */
+	List<MetricDefinition> parse(String rawDocument);
 
-	}
-
-	public static final String PROJECT_PROPERTIES_PREFIX = "spring.ai.alibaba.data-agent";
-
-	public static final String AGENT_ID = "agentId";
-
-	public static final String DATASOURCE_ID = "datasourceId";
-
-	// 指标全局文档使用的 agentId（指标定义跨 agent 共享）
-	public static final String METRIC_GLOBAL_AGENT_ID = "global";
-
-	// StreamEvent 常量
-	public static final String STREAM_EVENT_COMPLETE = "complete";
-
-	public static final String STREAM_EVENT_ERROR = "error";
+	/**
+	 * 解析器名称，用于工厂查找（如 "openapi3"、"custom-catalog"）。
+	 */
+	String formatName();
 
 }

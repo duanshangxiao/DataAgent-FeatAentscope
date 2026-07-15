@@ -49,6 +49,12 @@ public class DynamicFilterService {
 
 		switch (vectorType) {
 
+			case DocumentMetadataConstant.METRIC:
+				conditions.clear();
+				conditions.add(b.eq(Constant.AGENT_ID, Constant.METRIC_GLOBAL_AGENT_ID).build());
+				conditions.add(b.eq(DocumentMetadataConstant.VECTOR_TYPE, vectorType).build());
+				break;
+
 			case DocumentMetadataConstant.AGENT_KNOWLEDGE:
 				// 场景 A: 知识库文档 -> 需要查 MySQL 获取启用状态
 				List<Integer> validIds = agentKnowledgeMapper.selectRecalledKnowledgeIds(Integer.valueOf(agentId));

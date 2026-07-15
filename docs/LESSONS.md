@@ -42,6 +42,53 @@
 
 ---
 
+## 2026-07-15: 指标目录代码卫生问题修复（4 项）
+
+### 1. searchableText 遗漏 metricCode 和 metricName
+- **现象**：embedding 向量和关键词匹配的 haystack 文本中不包含 `metricCode()` 和 `metricName()`，这两个字段是 OpenAPI 文档中最重要的标识字段却未纳入检索
+- **根因**：`searchableText()` 只拼接了 `summary`、`description`、`operationId`、`path`、`aliases`、`tags`、`requestParameters`
+- **修复**：在 `searchableText()` 开头追加 `metricCode()` 和 `metricName()`
+
+### 2. @Scheduled 使用脆弱 SpEL 解析字符串配置
+- **现象**：`fixedDelayString = "#{T(java.lang.Long).parseLong('${...:1800}') * 1000}"` runtime 解析，属性名以字符串硬编码在 SpEL 中
+- **根因**：`fixedDelay` 不支持 expression，工程上走了 SpEL 绕路
+- **修复**：新增 `refreshIntervalMillis()` 方法，SpEL 改为 `"#{@metricOpenApiSyncService.refreshIntervalMillis}"`
+
+### 3. circuitBreakerHalfOpenMaxCalls 类型不一致
+- **现象**：`MetricCapabilityProperties` 中为 `long`（默认 2），`MetricCircuitBreaker.configure()` 接收 `int`，调用方做了 `(int)` 强制转换
+- **根因**：属性定义时未注意与目标方法签名对齐
+- **修复**：`circuitBreakerHalfOpenMaxCalls` 改为 `int`，移除调用方 `(int)` 转换
+
+### 4. embeddingCoarseRank 硬编码 0.3 相似度阈值
+- **现象**：`embeddingCoarseRank()` 中 `.filter(entry -> entry.getValue() > 0.3D)` 硬编码，无法根据实际数据分布调优
+- **根因**：阈值未外置为配置项
+- **修复**：新增 `MetricCapabilityProperties.embeddingMinSimilarity`（默认 0.3），`embeddingCoarseRank` 引用配置项
+
+---
+
+## 2026-07-15: 指标能力系统可观测性缺失
+
+- **现象**：指标目录刷新成功/失败、定义数量、熔断器状态无法从外部查询，只能通过应用日志观察。指标目录静默退化（如定时刷新失败导致 catalog 过期）无法被监控系统告警。
+- **根因**：项目无 Micrometer/Actuator 依赖，MetricCapability 组件状态仅通过 SLF4J 日志记录。
+- **修复**：新增 `MetricCapabilityStatus` JMX MBean（零依赖），暴露 6 个可查询属性：`ready`、`definitionCount`、`lastRefreshSuccessTime`、`lastRefreshFailureTime`、`lastRefreshError`、`circuitBreakerState`。分别接入 `MetricOpenApiSyncService`、`MetricCircuitBreaker` 的生命周期。
+- **教训**：[CHECKPOINT] 后续 capapability provider 新增时同步接入 `MetricCapabilityStatus`；如果将来引入 Micrometer，应优先将 MBean 属性迁移为 Prometheus gauge。
+
+---
+
+## 2026-07-15: 指标检索架构重构 — PGVector 替代自研检索
+
+- **背景**：原 `MetricCatalogIndex` 自研了两阶段检索（embedding 粗排 + 关键词精排），在 OpenAPI 技术文档而非业务语义文本上做匹配，中英文跨语言场景准确率不可靠。
+- **方案**：
+  1. 指标元数据导入 PGVector（复用项目已有的 `AgentVectorStoreService` + `DocumentConverterUtil`），利用 PGVector 原生 embedding 检索
+  2. 混合检索交给已有的 `HybridRetrievalStrategy` 体系（ES 可用时自动并行关键词+向量，不可用时纯向量）
+  3. LLM 替代应用层路由决策（`route()` 不再做硬性 `METRIC_ONLY` / `ABSTAIN` 判断，统一返回 `MIXED` 允许多工具共存，LLM 自行判断是否走指标路径）
+  4. 解析器接口化（`MetricMetadataParser` → `MetricMetadataParserFactory`），支持未来切换非 OpenAPI 格式
+- **删除**：`MetricCatalogIndex.java`、`MetricCatalogSearchCandidate.java`
+- **新增**：`MetricMetadataParser.java`、`MetricMetadataParserFactory.java`、`MetricDefinitionLookup.java`、`DocumentConverterUtil.convertMetricToDocument()`
+- **改动**：`MetricOpenApiParser` 实现接口、`MetricOpenApiSyncService` 输出到 PGVector、`MetricToolProvider` 搜索切到 `AgentVectorStoreService`、`MetricCapabilityProvider.route()` 简化、`CapabilityRoutingService` 取消工具裁剪
+
+---
+
 ## 模板
 
 ```markdown
