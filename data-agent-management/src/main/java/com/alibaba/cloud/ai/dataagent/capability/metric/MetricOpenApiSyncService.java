@@ -66,13 +66,9 @@ class MetricOpenApiSyncService {
 		refreshCatalog();
 	}
 
-	@Scheduled(fixedDelayString = "#{@metricOpenApiSyncService.refreshIntervalMillis}")
+	@Scheduled(fixedDelayString = "${spring.ai.alibaba.data-agent.capabilities.metric-system.refresh-interval-seconds:1800}000")
 	public void scheduledRefresh() {
 		refreshCatalog();
-	}
-
-	public long refreshIntervalMillis() {
-		return properties.getRefreshIntervalSeconds() * 1000L;
 	}
 
 	public void refreshCatalog() {
