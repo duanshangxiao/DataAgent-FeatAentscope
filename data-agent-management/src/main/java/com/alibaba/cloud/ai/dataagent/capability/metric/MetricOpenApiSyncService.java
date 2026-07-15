@@ -40,7 +40,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-class MetricOpenApiSyncService {
+public class MetricOpenApiSyncService {
 
 	private static final int EMBEDDING_BATCH_SIZE = 10;
 
@@ -141,14 +141,6 @@ class MetricOpenApiSyncService {
 	}
 
 	private void syncToVectorStore(List<MetricDefinition> definitions) {
-		try {
-			agentVectorStoreService.deleteDocumentsByVectorType(Constant.METRIC_GLOBAL_AGENT_ID,
-					com.alibaba.cloud.ai.dataagent.constant.DocumentMetadataConstant.METRIC);
-		}
-		catch (Exception ex) {
-			log.warn("Failed to delete old metric documents, continue with import. agentId={}",
-					Constant.METRIC_GLOBAL_AGENT_ID, ex);
-		}
 		List<Document> documents = new ArrayList<>();
 		for (MetricDefinition definition : definitions) {
 			documents.add(DocumentConverterUtil.convertMetricToDocument(Constant.METRIC_GLOBAL_AGENT_ID, definition));
@@ -157,6 +149,14 @@ class MetricOpenApiSyncService {
 			int end = Math.min(i + EMBEDDING_BATCH_SIZE, documents.size());
 			agentVectorStoreService.addDocuments(Constant.METRIC_GLOBAL_AGENT_ID,
 					documents.subList(i, end));
+		}
+		try {
+			agentVectorStoreService.deleteDocumentsByVectorType(Constant.METRIC_GLOBAL_AGENT_ID,
+					com.alibaba.cloud.ai.dataagent.constant.DocumentMetadataConstant.METRIC);
+		}
+		catch (Exception ex) {
+			log.warn("Failed to delete old metric documents after update. agentId={}, definitionCount={}",
+					Constant.METRIC_GLOBAL_AGENT_ID, definitions.size(), ex);
 		}
 	}
 
