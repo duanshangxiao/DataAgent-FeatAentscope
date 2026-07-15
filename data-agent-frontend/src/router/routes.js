@@ -72,6 +72,17 @@ const routes = [
     },
   },
 
+  // 指标能力模块
+  {
+    path: '/metric-capability',
+    name: 'MetricCapability',
+    component: () => import('@/views/MetricCapability.vue'),
+    meta: {
+      title: '指标管理',
+      module: 'metric',
+    },
+  },
+
   // 404页面
   {
     path: '/:pathMatch(.*)*',

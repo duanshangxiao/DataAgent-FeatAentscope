@@ -33,6 +33,10 @@
               <i class="bi bi-gear"></i>
               <span>模型配置</span>
             </div>
+            <div class="nav-item" :class="{ active: isMetricCapabilityPage() }" @click="goToMetricCapability">
+              <i class="bi bi-graph-up"></i>
+              <span>指标管理</span>
+            </div>
           </nav>
         </div>
       </div>
@@ -62,6 +66,10 @@
         router.push('/model-config');
       };
 
+      const goToMetricCapability = () => {
+        router.push('/metric-capability');
+      };
+
       const isAgentPage = () => {
         return (
           router.currentRoute.value.name === 'AgentList' ||
@@ -75,11 +83,17 @@
         return router.currentRoute.value.name === 'ModelConfig';
       };
 
+      const isMetricCapabilityPage = () => {
+        return router.currentRoute.value.name === 'MetricCapability';
+      };
+
       return {
         goToAgentList,
         goToModelConfig,
+        goToMetricCapability,
         isAgentPage,
         isModelConfigPage,
+        isMetricCapabilityPage,
       };
     },
   };
