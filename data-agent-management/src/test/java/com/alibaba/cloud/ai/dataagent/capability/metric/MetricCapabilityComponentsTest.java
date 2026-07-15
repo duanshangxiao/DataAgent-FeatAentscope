@@ -205,8 +205,8 @@ public class MetricCapabilityComponentsTest {
 		MetricCapabilityProperties props = new MetricCapabilityProperties();
 		props.setEnabled(true);
 
-		MetricCapabilityProvider provider = new MetricCapabilityProvider(props, null, null, null,
-				new MetricCircuitBreaker(new MetricCapabilityStatus())) {
+		MetricCapabilityProvider provider = new MetricCapabilityProvider(props, null, null,
+				new MetricCircuitBreaker(new MetricCapabilityStatus()), new MetricCapabilityStatus()) {
 			@Override
 			public boolean enabledForAgent(String agentId) {
 				return true;

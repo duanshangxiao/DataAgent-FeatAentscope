@@ -28,10 +28,14 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.tool.ToolCallback;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+/**
+ * 指标能力提供者，仅负责运行时判断（可用性、路由、工具）。
+ * <p>
+ * 不依赖同步/存储等基础设施组件，避免循环依赖。
+ */
 @Slf4j
 @Component
 public class MetricCapabilityProvider implements CapabilityProvider {
@@ -44,8 +48,6 @@ public class MetricCapabilityProvider implements CapabilityProvider {
 
 	private final MetricToolProvider metricToolProvider;
 
-	private final MetricOpenApiSyncService metricOpenApiSyncService;
-
 	private final MetricCircuitBreaker circuitBreaker;
 
 	private final MetricCapabilityStatus metricCapabilityStatus;
@@ -57,12 +59,10 @@ public class MetricCapabilityProvider implements CapabilityProvider {
 
 	public MetricCapabilityProvider(MetricCapabilityProperties properties,
 			AgentSkillBindingService agentSkillBindingService, MetricToolProvider metricToolProvider,
-			@Lazy MetricOpenApiSyncService metricOpenApiSyncService, MetricCircuitBreaker circuitBreaker,
-			MetricCapabilityStatus metricCapabilityStatus) {
+			MetricCircuitBreaker circuitBreaker, MetricCapabilityStatus metricCapabilityStatus) {
 		this.properties = properties;
 		this.agentSkillBindingService = agentSkillBindingService;
 		this.metricToolProvider = metricToolProvider;
-		this.metricOpenApiSyncService = metricOpenApiSyncService;
 		this.circuitBreaker = circuitBreaker;
 		this.metricCapabilityStatus = metricCapabilityStatus;
 	}
@@ -127,7 +127,6 @@ public class MetricCapabilityProvider implements CapabilityProvider {
 		skillBindingCache.invalidateAll();
 		circuitBreaker.configure(properties.getCircuitBreakerFailureThreshold(),
 				properties.getCircuitBreakerOpenDurationMs(), properties.getCircuitBreakerHalfOpenMaxCalls());
-		metricOpenApiSyncService.refreshCatalog();
 	}
 
 }
