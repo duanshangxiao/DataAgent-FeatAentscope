@@ -25,19 +25,23 @@ spring:
       encoding: utf-8
   ai:
     vectorstore:
-#      type: simple
-      type: pgvector
-      pgvector:
-#        host: localhost
-#        port: 5432
-#        database: vector_db_feat
-        url: ${DATA_AGENT_VECTORSTORE_URL:jdbc:postgresql://localhost:5432/vector_db_feat?currentSchema=public}
-        username: duansx
-        password: bigdata321
-        driver-class-name: org.postgresql.Driver
-        schema-name: public
-        table-name: cares_data_agent_weihai
-        dimensions: 1024
+      # PGVector 模式（注释保留，后续可切回）
+      # type: pgvector
+      # pgvector:
+      #   url: ${DATA_AGENT_VECTORSTORE_URL:jdbc:postgresql://localhost:5432/vector_db_feat?currentSchema=public}
+      #   username: duansx
+      #   password: bigdata321
+      #   driver-class-name: org.postgresql.Driver
+      #   schema-name: public
+      #   table-name: cares_data_agent_weihai
+      #   dimensions: 1024
+
+      # 切换为 Elasticsearch 向量存储
+      type: elasticsearch
+      elasticsearch:
+        index-name: spring-ai-document-index
+        initialize-schema: true
+
     alibaba:
       data-agent:
         vector-store:
@@ -45,6 +49,8 @@ spring:
           table-similarity-threshold: 0.2
           default-topk-limit: 8
           default-similarity-threshold: 0.4
+          # 启用混合检索（向量 + ES 关键词双路召回 RRF 融合）
+          enable-hybrid-search: true
         llm-service-type: stream
         code-executor:
           # 运行Python代码的环境（生产环境建议使用docker，不建议使用local）
@@ -85,6 +91,9 @@ spring:
           observability:
             enabled: ${AGENTSCOPE_OBSERVABILITY_ENABLED:true}
             use-langfuse-tracer: ${AGENTSCOPE_OBSERVABILITY_USE_LANGFUSE_TRACER:true}
+
+  elasticsearch:
+    uris: http://localhost:9200
   webflux:
     multipart:
       max-file-size: 10MB

@@ -181,6 +181,39 @@
 
 ---
 
+## 2026-07-20: 暗色模式下硬编码白色背景 + 继承白色文字 = 标题不可见
+
+- **现象**：AgentDetail 页面的 h2 标题完全不可见，DOM 中文字存在但计算色为 `rgb(255,255,255)`，父容器 `el-header` 也是白色背景
+- **根因**：
+  1. `global.css` 的 `@media (prefers-color-scheme: dark)` 将 `--text-primary` 设为 `#ffffff`，body 继承该变量 → 暗色模式下默认文字为白色
+  2. `AgentDetail.vue` 三处行内硬编码 `background-color: white`（el-header / el-aside / el-main），未使用 CSS 变量
+  3. h2 没有显式 `color`，从 body 继承了白色文字 → 白字白底 = 不可见
+- **修复**：三处行内 `white` 改为 CSS 类 `detail-panel`，显式设置 `color` 为深色，不与暗色模式变量联动
+- **教训**：[CHECKPOINT] 任何行内硬编码背景色（如 `style="background-color: white"`）在暗色模式下都可能与从 body 继承的白色文字形成同色冲突。新增页面/组件时必须同时审查在 `prefers-color-scheme: dark` 下的颜色对比度。`global.css` 已有暗色变量定义但未被组件广泛采用，要么全部对齐变量做真暗色支持，要么显式设置 color 防止继承踩坑。
+
+---
+
+## 2026-07-20: 前端改动应通过浏览器自动化验证，不能只依赖 npm run build
+
+- **现象**：多次前端改动（暗色模式标题、技能配置联动）仅通过 `npm run build` 编译和静态代码审查，但实际交付后用户环境与预判不符（如 AgentDetail 的标题在暗色模式下的颜色冲突，以及 AgentList 和 AgentDetail 问题的误判）
+- **根因**：`npm run build` 只管编译/打包正确性，不验证运行时 DOM 状态、CSS 计算值、暗色模式下的颜色对比度、组件交互状态。仅凭源码推导容易漏判跨组件样式继承、全局变量覆盖、条件渲染等运行时问题
+- **修复/方法**：macOS 下可利用 `osascript` 控制 Chrome，在目标页面执行 JS 获取计算样式和 DOM 状态：
+  ```bash
+  osascript -e '
+  tell application "Google Chrome"
+    execute active tab of front window javascript "
+      JSON.stringify({
+        h2_color: getComputedStyle(document.querySelector(\"h2\")).color,
+        panels_bg: Array.from(document.querySelectorAll(\".detail-panel\"))
+          .map(el => getComputedStyle(el).backgroundColor),
+        radio_disabled: document.querySelector(\"input[value=metric-system]\").disabled
+      })
+    "
+  end tell'
+  ```
+  验证清单：标题颜色/背景是否冲突、暗色模式下文字可见性、表单元素是否 disabled、CSS 变量是否实际解析
+- **教训**：[CHECKPOINT] 任何前端 CSS/渲染改动，除了 `npm run build`，必须至少额外完成：① 切换到目标页面 URL（`set URL of active tab`）；② 通过 JS 读取目标元素的计算样式（`getComputedStyle`），验证 `color`/`backgroundColor` 对比度；③ 检查交互状态（`disabled`/`checked` 等）。静态代码审查不能替代运行时 DOM 验证。
+
 ## 模板
 
 ```markdown

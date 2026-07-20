@@ -42,7 +42,7 @@ class CapabilityRoutingServiceTest {
 		CapabilityProvider dbProvider = new FixedCapabilityProvider("other", CapabilityRouteResult.dbOnly("db"));
 		CapabilityRoutingService service = new CapabilityRoutingService(new CapabilityRegistry(List.of(metricProvider, dbProvider)));
 
-		CapabilityRouteResult result = service.route("1", "最近7天GMV趋势");
+		CapabilityRouteResult result = service.route("1", "最近7天GMV趋势", null);
 
 		assertEquals(CapabilityRouteType.METRIC_ONLY, result.routeType());
 		assertEquals("metric-system", result.matchedCapabilityId());

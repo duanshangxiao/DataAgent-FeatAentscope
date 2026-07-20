@@ -1,0 +1,96 @@
+# Elasticsearch 8.18.0 — 本地开发测试用
+#
+# 前置条件 (macOS Docker Desktop 自动满足，Linux 需手动执行):
+#   sudo sysctl -w vm.max_map_count=262144
+#   echo 'vm.max_map_count=262144' | sudo tee -a /etc/sysctl.conf
+#
+# 数据目录: /Users/dsx/devTools/elasticsearch/8180/
+#   data/      — 索引 & 分片数据
+#   logs/      — 运行日志
+#   snapshots/ — 快照备份
+#
+# 启动: docker compose -f docker-file/docker-compose-es.yml up -d
+# 停止: docker compose -f docker-file/docker-compose-es.yml down
+# 彻底清理 (含数据): docker compose -f docker-file/docker-compose-es.yml down -v
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.18.0
+    container_name: data-agent-elasticsearch
+    hostname: es-node-01
+
+    environment:
+      # 单节点模式 — 绕过 bootstrap checks (discovery, 分片副本数自动=0)
+      - discovery.type=single-node
+
+      # 关闭安全认证 (仅开发环境)
+      - xpack.security.enabled=false
+      - xpack.security.enrollment.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - xpack.security.transport.ssl.enabled=false
+
+      # 关闭开发/测试环境用不到的组件，减少资源消耗
+      - xpack.ml.enabled=false
+      - xpack.watcher.enabled=false
+      - xpack.graph.enabled=false
+
+      # JVM 堆内存: Xms=Xmx 防止运行时 resize 开销
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+
+      # 提高磁盘水位线阈值 — 本地开发磁盘空间紧张时避免分片无法分配
+      # 首次启动后已通过 REST API 持久化到集群状态，无需在此重复配置
+      # 如需重新创建 volume 后再次设置:
+      #   curl -X PUT localhost:9200/_cluster/settings -H 'Content-Type: application/json' \
+      #     -d '{"persistent":{"cluster.routing.allocation.disk.watermark.low":"97%","cluster.routing.allocation.disk.watermark.high":"98%","cluster.routing.allocation.disk.watermark.flood_stage":"99%"}}'
+
+      # 日志保留策略
+      - logger.level=INFO
+      - logger.org.elasticsearch.discovery=WARN
+
+    volumes:
+      # 索引 & 分片持久化
+      - /Users/dsx/devTools/elasticsearch/8180/data:/usr/share/elasticsearch/data
+      # 运行日志持久化 (方便排查，不随容器销毁丢失)
+      - /Users/dsx/devTools/elasticsearch/8180/logs:/usr/share/elasticsearch/logs
+      # 快照备份目录 (配合 snapshot lifecycle 使用)
+      - /Users/dsx/devTools/elasticsearch/8180/snapshots:/usr/share/elasticsearch/snapshots
+
+    ports:
+      - "9200:9200"   # HTTP API
+      - "9300:9300"   # 节点间 transport (单节点实际用不到，保留扩展性)
+
+    # 容器资源限制 (ES 是内存大户，开发环境必须限)
+    mem_limit: 1g
+    mem_reservation: 512m
+    cpus: "2"
+
+    # Linux 下 ES 需要高文件描述符限制；macOS Docker Desktop 虚拟化自动满足
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+      memlock:
+        soft: -1
+        hard: -1
+
+    networks:
+      - app-network
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+    labels:
+      - "app=data-agent"
+      - "component=elasticsearch"
+      - "version=8.18.0"
+
+networks:
+  app-network:
+    driver: bridge
+    name: "data-agent-network"

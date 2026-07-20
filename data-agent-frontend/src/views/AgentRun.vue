@@ -249,7 +249,15 @@
                     size="small"
                   >
                     <el-radio-button value="">智能路由</el-radio-button>
-                    <el-radio-button value="metric-system">指标查询</el-radio-button>
+                    <el-tooltip
+                      content="当前智能体未启用指标系统，请先在技能配置中开启「指标系统助手」"
+                      :disabled="metricSkillEnabled"
+                      placement="top"
+                    >
+                      <el-radio-button value="metric-system" :disabled="!metricSkillEnabled"
+                        >指标查询</el-radio-button
+                      >
+                    </el-tooltip>
                     <el-radio-button value="database">数据库查询</el-radio-button>
                   </el-radio-group>
                 </div>
@@ -1006,6 +1014,7 @@
     TextType,
   } from '@/services/graph';
   import { type Agent } from '@/services/agent';
+  import SkillService from '@/services/skill';
   import { type ResultData, type ResultSetData } from '@/services/resultSet';
   import {
     type PendingClarifyState,
@@ -1146,6 +1155,7 @@
         clarifyCheckEnabled: false,
         preferredCapability: '' as string, // '' 自动路由 | 'metric-system' 指标查询 | 'database' 数据库查询
       });
+      const metricSkillEnabled = ref(true);
       const showReportFullscreen = ref(false);
       const fullscreenReportContent = ref('');
       const inputControlsCollapsed = ref(false);
@@ -1213,6 +1223,17 @@
         } catch (error) {
           ElMessage.error('加载Agent失败');
           console.error('加载Agent失败:', error);
+        }
+      };
+
+      const loadSkillConfig = async () => {
+        try {
+          const routeAgentId = getRouteAgentId();
+          if (routeAgentId === null) return;
+          const config = await SkillService.getAgentSkillConfig(routeAgentId);
+          metricSkillEnabled.value = config.selectedSkillIds.includes('builtin-metric-system');
+        } catch {
+          metricSkillEnabled.value = false;
         }
       };
 
@@ -2758,6 +2779,7 @@
       // 生命周期
       onMounted(async () => {
         await loadAgent();
+        await loadSkillConfig();
       });
 
       return {
@@ -2769,6 +2791,7 @@
         isSubmittingMessage,
         pendingClarify,
         requestOptions,
+        metricSkillEnabled,
         showReportFullscreen,
         fullscreenReportContent,
         inputControlsCollapsed,

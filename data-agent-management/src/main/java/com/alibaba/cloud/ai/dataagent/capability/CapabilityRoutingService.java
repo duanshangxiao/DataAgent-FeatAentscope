@@ -15,6 +15,7 @@
  */
 package com.alibaba.cloud.ai.dataagent.capability;
 
+import com.alibaba.cloud.ai.dataagent.prompt.PromptLoader;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
@@ -33,6 +34,8 @@ public class CapabilityRoutingService {
 
 	private static final String SQL_GUARD_TOOL = "sql_guard.check";
 
+	private static final String DB_PATH_PROMPT = PromptLoader.loadPrompt("db-path", "md");
+
 	private final CapabilityRegistry capabilityRegistry;
 
 	public CapabilityRouteResult route(String agentId, String query, String preferredCapability) {
@@ -45,7 +48,12 @@ public class CapabilityRoutingService {
 			List<CapabilityProvider> providers = capabilityRegistry.listEnabledProviders(agentId);
 			if (providers.isEmpty()) {
 				log.warn("Metric capability not enabled for agent, falling back to DB. agentId={}", agentId);
-				return CapabilityRouteResult.dbOnly("指标系统未启用，降级为数据库查询路径。");
+				return CapabilityRouteResult.builder()
+					.routeType(CapabilityRouteType.DB_ONLY)
+					.matchedCapabilityId("metric-system")
+					.reason("指标系统未启用，降级为数据库查询路径")
+					.degradedMessage("用户指定了指标查询路径，但当前智能体未启用指标系统（请先在技能配置中开启「指标系统助手」）。已自动切换为数据库查询。")
+					.build();
 			}
 			return CapabilityRouteResult.builder()
 				.routeType(CapabilityRouteType.MIXED)
@@ -105,9 +113,10 @@ public class CapabilityRoutingService {
 		boolean metricAvailable = routeResult.routeType() == CapabilityRouteType.MIXED;
 		boolean userForcedMetric = "metric-system".equalsIgnoreCase(preferredCapability);
 		String dateDirective = buildDateDirective();
+		String header = buildDegradationNotice(routeResult);
 		if (metricAvailable) {
-			return """
-					指标系统已接入，以下规则覆盖默认工具路由规则，必须严格遵守。
+			String body = """
+					指标系统已接入，必须严格遵守以下规则。
 
 					1. %s必须首先调用 metric.catalog.search 检索候选指标接口。
 
@@ -123,13 +132,29 @@ public class CapabilityRoutingService {
 					5. 如果指标系统报错，直接说明指标系统暂时不可用。
 
 					%s
-					""".formatted(userForcedMetric ? "用户指定了指标查询路径，" : "", dateDirective).trim();
+
+					## 数据库查询规则（指标路径不可用时的回退方案）
+
+					%s
+					""".formatted(userForcedMetric ? "用户指定了指标查询路径，" : "", dateDirective, DB_PATH_PROMPT);
+			return prependDegradation(header, body);
 		}
-		return """
-				当前环境中指标系统不可用。
-				1. 使用 datasource explorer、semantic、sql_guard 等数据库工具链。
-				2. 不要尝试指标系统工具。
-				""".trim();
+		String body = DB_PATH_PROMPT;
+		return prependDegradation(header, body);
+	}
+
+	private String buildDegradationNotice(CapabilityRouteResult routeResult) {
+		if (routeResult.degradedMessage() != null && !routeResult.degradedMessage().isBlank()) {
+			return "⚠️ " + routeResult.degradedMessage();
+		}
+		return "";
+	}
+
+	private String prependDegradation(String header, String body) {
+		if (header.isEmpty()) {
+			return body;
+		}
+		return header + "\n\n" + body;
 	}
 
 	private String buildDateDirective() {

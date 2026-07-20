@@ -73,7 +73,7 @@ Vibe Coding 文档是指那些**指导 AI 编码 agent 如何在本项目中工�
 | 文件 | 作用 | 受众 | 必须更新时机 |
 |------|------|------|-------------|
 | `docs/KNOWLEDGE_USAGE.md` | 如何配置语义模型/业务知识来优化 AI 行为 | 系统管理员 + AI agent | 知识配置机制变化 |
-| `docs/duan/data-agent-sse-agent-scope-tools.md` | SSE 流式输出机制、工具系统架构、运行时加载流程 | AI agent（实现参考） | 运行时机制变更 |
+| `docs/ELASTICSEARCH.md` | ES 集成说明：切换配置、容器管理、数据查看、混合检索、故障排查 | AI agent + 维护者 | ES 配置或容器参数变更 |
 | `docs/duan/data-agent-metric-capability-implementation-plan.md` | 指标能力实现规格书（Phase 1-5、禁止项、验收标准） | AI agent（实现参考） | 指标能力需求变更 |
 | `docs/duan/data-agent-metric-capability-fix-prompt.md` | 指标能力 bug 修复任务书 | AI agent（修复参考） | 修复完成后归档到 LESSONS.md |
 

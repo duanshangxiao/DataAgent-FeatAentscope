@@ -20,11 +20,12 @@ import lombok.Builder;
 
 @Builder
 public record CapabilityRouteResult(CapabilityRouteType routeType, double score, String matchedCapabilityId,
-		List<String> matchedTargets, String reason) {
+		List<String> matchedTargets, String reason, String degradedMessage) {
 
 	public CapabilityRouteResult {
 		matchedTargets = matchedTargets == null ? List.of() : List.copyOf(matchedTargets);
 		reason = reason == null ? "" : reason;
+		degradedMessage = degradedMessage == null ? "" : degradedMessage;
 	}
 
 	public static CapabilityRouteResult dbOnly(String reason) {

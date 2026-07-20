@@ -108,6 +108,25 @@
 
 不需要真实 LLM 后端，用前端 mock 数据或浏览器 DevTools 手动修改 reactive state 即可覆盖。
 
+**macOS 下可通过 `osascript` 控制 Chrome 进行程序化 DOM 验证**（补充静态编译无法覆盖的运行时问题）：
+
+```bash
+osascript -e '
+tell application "Google Chrome"
+  set URL of active tab of front window to "http://127.0.0.1:3000/target-page"
+  delay 3
+  execute active tab of front window javascript "
+    JSON.stringify({
+      element_color: getComputedStyle(document.querySelector(\"h2\")).color,
+      container_bg: getComputedStyle(document.querySelector(\".panel\")).backgroundColor,
+      radio_disabled: document.querySelector(\"input[value=metric-system]\").disabled
+    })
+  "
+end tell'
+```
+
+验证清单：① 标题/文字颜色与背景对比度（`color` vs `backgroundColor`）；② 暗色模式下 `@media (prefers-color-scheme: dark)` 覆盖是否生效；③ 表单元素交互状态（`disabled`/`checked`）；④ CSS 变量（`var(--xxx)`）的实际解析值。
+
 ### 3.6 DB 持久化格式与组件反序列化对齐
 
 任何将组件渲染结果写入数据库的代码，必须同时保证：写入的数据格式能被"历史路径"正确反序列化为相同组件的输入 props。

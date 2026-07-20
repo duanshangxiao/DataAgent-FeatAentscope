@@ -18,7 +18,7 @@
   <BaseLayout>
     <el-container style="margin-top: 20px; gap: 10px">
       <!-- 设置 header -->
-      <el-header style="background-color: white; margin-bottom: 20px">
+      <el-header style="margin-bottom: 20px" class="detail-panel">
         <el-row :gutter="20" align="middle">
           <el-col :span="1">
             <el-button
@@ -65,7 +65,7 @@
       </el-header>
       <el-container style="gap: 10px">
         <!-- 左侧菜单 -->
-        <el-aside width="200px" style="background-color: white">
+        <el-aside width="200px" class="detail-panel">
           <el-menu
             :default-active="activeMenuIndex"
             class="el-menu-vertical-demo"
@@ -121,7 +121,7 @@
             </el-menu-item-group>
           </el-menu>
         </el-aside>
-        <el-main style="background-color: white">
+        <el-main class="detail-panel">
           <!-- 右侧内容 -->
           <AgentBaseSetting v-if="activeMenuIndex === 'basic'" :agent="agent"></AgentBaseSetting>
           <AgentDataSourceConfig
@@ -331,6 +331,15 @@
 </script>
 
 <style scoped>
+  .detail-panel {
+    background-color: #fff;
+    color: #303133;
+  }
+
+  .detail-panel h2 {
+    color: #1e293b;
+  }
+
   .avatar-wrapper {
     position: relative;
     width: 60px;
