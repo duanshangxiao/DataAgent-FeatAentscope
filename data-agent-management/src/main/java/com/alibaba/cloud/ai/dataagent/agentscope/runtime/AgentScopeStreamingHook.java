@@ -56,17 +56,23 @@ public class AgentScopeStreamingHook implements Hook {
 					"Calling tool: " + preActingEvent.getToolUse().getName());
 		}
 		else if (event instanceof ActingChunkEvent actingChunkEvent) {
+			String text = extractToolResultText(actingChunkEvent.getChunk());
 			emit(resolveToolNodeName(actingChunkEvent.getToolUse().getName()),
-					extractToolResultText(actingChunkEvent.getChunk()));
+					text, detectTextType(text));
 		}
 		else if (event instanceof PostActingEvent postActingEvent) {
+			String text = extractToolResultText(postActingEvent.getToolResult());
 			emit(resolveToolNodeName(postActingEvent.getToolUse().getName()),
-					extractToolResultText(postActingEvent.getToolResult()));
+					text, detectTextType(text));
 		}
 		return Mono.just(event);
 	}
 
 	private void emit(String nodeName, String text) {
+		emit(nodeName, text, TextType.TEXT);
+	}
+
+	private void emit(String nodeName, String text, TextType textType) {
 		if (text == null || text.isBlank()) {
 			return;
 		}
@@ -74,9 +80,21 @@ public class AgentScopeStreamingHook implements Hook {
 			.agentId(agentId)
 			.threadId(threadId)
 			.nodeName(nodeName)
-			.textType(TextType.TEXT)
+			.textType(textType)
 			.text(text)
 			.build());
+	}
+
+	private static TextType detectTextType(String text) {
+		if (text == null || text.isBlank()) {
+			return TextType.TEXT;
+		}
+		String trimmed = text.trim();
+		if ((trimmed.startsWith("{") && trimmed.endsWith("}"))
+				|| (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+			return TextType.JSON;
+		}
+		return TextType.TEXT;
 	}
 
 	private String resolveToolNodeName(String toolName) {

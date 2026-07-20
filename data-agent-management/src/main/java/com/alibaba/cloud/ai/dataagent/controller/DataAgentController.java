@@ -56,7 +56,9 @@ public class DataAgentController {
 			@RequestParam(value = "clarifyCheckEnabled", required = false) boolean clarifyCheckEnabled,
 			@RequestParam(value = "humanFeedback", required = false) boolean humanFeedback,
 			@RequestParam(value = "humanFeedbackContent", required = false) String humanFeedbackContent,
-			@RequestParam(value = "rejectedPlan", required = false) boolean rejectedPlan, ServerHttpResponse response) {
+			@RequestParam(value = "rejectedPlan", required = false) boolean rejectedPlan,
+			@RequestParam(value = "preferredCapability", required = false) String preferredCapability,
+			ServerHttpResponse response) {
 		Long numericAgentId = parseAgentId(agentId);
 		chatSessionService.requireSessionForAgent(threadId, numericAgentId);
 		response.getHeaders().add("Cache-Control", "no-cache");
@@ -73,6 +75,7 @@ public class DataAgentController {
 			.humanFeedback(humanFeedback)
 			.humanFeedbackContent(humanFeedbackContent)
 			.rejectedPlan(rejectedPlan)
+			.preferredCapability(preferredCapability)
 			.build();
 		agentService.graphStreamProcess(sink, request);
 

@@ -131,7 +131,7 @@ public class DatasourceExplorerToolProvider implements AgentScopedToolProvider {
 				可用于查看表列表、查找表、查看单表结构、查看关系、按需预览样例数据，以及执行只读 SQL 查询。
 				约束说明：
 				1. 只能访问当前 Agent 的活动数据源。
-				2. SEARCH 仅允许执行只读 SQL。
+				2. SEARCH 仅允许执行只读 SQL，禁止 SELECT * 或 table.*，必须显式列出列名（COUNT(*) 除外）。
 				3. 如果只需要定位表，优先使用 LIST_TABLES 或 FIND_TABLES。
 				4. 如果需要写 SQL，先获取表结构和关系，再决定是否执行 SEARCH。
 				5. PREVIEW_ROWS 不是默认前置动作，只有样例值会实质影响 SQL 写法时才使用。

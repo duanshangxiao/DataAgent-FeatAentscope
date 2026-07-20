@@ -21,6 +21,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Duration;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -49,6 +51,8 @@ class MetricQueryExecutionService {
 	private static final Pattern RECENT_DAYS_PATTERN = Pattern.compile("最近\\s*(\\d+)\\s*天");
 
 	private static final Pattern DATE_PATTERN = Pattern.compile("(\\d{4}[-/]\\d{1,2}[-/]\\d{1,2})");
+
+	private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
 	private final MetricDefinitionLookup metricDefinitionLookup;
 
@@ -84,20 +88,38 @@ class MetricQueryExecutionService {
 			log.warn("Metric circuit breaker blocked request. apiId={}", definition.apiId());
 			return buildCircuitBreakerResult(definition, preparedRequest);
 		}
-		log.info("Executing metric HTTP request. apiId={}, metricName={}, method={}, path={}", definition.apiId(),
-				definition.metricName(), definition.httpMethod(), definition.path());
+		log.info("Executing metric HTTP request. apiId={}, metricName={}, method={}, path={}, arguments={}",
+				definition.apiId(), definition.metricName(), definition.httpMethod(), definition.path(),
+				preparedRequest.arguments());
 		long startTime = System.currentTimeMillis();
 		try {
 			JsonNode response = executeHttp(definition, preparedRequest);
 			circuitBreaker.recordSuccess();
-			return normalize(definition, response, System.currentTimeMillis() - startTime,
-					preparedRequest.arguments());
+			long costMs = System.currentTimeMillis() - startTime;
+			MetricQueryResult result = normalize(definition, response, costMs, preparedRequest.arguments());
+			log.info("Metric query execute success. apiId={}, costMs={}ms, rowCount={}",
+					definition.apiId(), costMs, result.rows() != null ? result.rows().size() : 0);
+			return result;
 		}
 		catch (Exception ex) {
 			circuitBreaker.recordFailure();
-			log.warn("Metric query execution failed, circuit breaker recorded failure. apiId={}", definition.apiId(), ex);
-			throw new IllegalStateException("指标查询失败：" + ex.getMessage(), ex);
+			log.warn("Metric query execution failed, returning FALLBACK_TO_DB. apiId={}", definition.apiId(), ex);
+			return buildFallbackResult(definition, preparedRequest, ex);
 		}
+	}
+
+	private MetricQueryResult buildFallbackResult(MetricDefinition definition,
+			PreparedMetricRequest preparedRequest, Exception ex) {
+		Map<String, Object> metadata = new LinkedHashMap<>();
+		metadata.put("sourceType", "metric-system");
+		metadata.put("status", "HTTP_ERROR");
+		metadata.put("apiId", definition.apiId());
+		metadata.put("error", ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName());
+		return MetricQueryResult.builder()
+			.status("FALLBACK_TO_DB")
+			.summary("指标系统调用失败，建议使用数据库查询作为降级方案。")
+			.metadata(metadata)
+			.build();
 	}
 
 	private MetricQueryResult buildCircuitBreakerResult(MetricDefinition definition,
@@ -214,15 +236,16 @@ class MetricQueryExecutionService {
 			}
 		}
 		Matcher recentDays = RECENT_DAYS_PATTERN.matcher(query);
-		boolean hasRecentDays = recentDays.find();
-		String recentDaysGroup = hasRecentDays ? recentDays.group(1) : null;
-		if (hasRecentDays
-				&& (parameterName.contains("start") || parameterName.contains("begin")
-						|| parameterName.contains("from"))) {
-			return "NOW-" + recentDaysGroup + "D";
-		}
-		if (hasRecentDays && (parameterName.contains("end") || parameterName.contains("to"))) {
-			return "NOW";
+		if (recentDays.find()) {
+			int days = Integer.parseInt(recentDays.group(1));
+			LocalDate today = LocalDate.now();
+			if (parameterName.contains("start") || parameterName.contains("begin")
+					|| parameterName.contains("from")) {
+				return today.minusDays(days).format(DATE_FORMATTER);
+			}
+			if (parameterName.contains("end") || parameterName.contains("to")) {
+				return today.format(DATE_FORMATTER);
+			}
 		}
 		Matcher dateMatcher = DATE_PATTERN.matcher(query);
 		if (dateMatcher.find() && (parameterName.contains("start") || parameterName.contains("begin"))) {
@@ -366,8 +389,8 @@ class MetricQueryExecutionService {
 				.headers(httpHeaders -> appendHeaders(httpHeaders, definition, arguments));
 			WebClient.RequestHeadersSpec<?> headersSpec = httpMethod == HttpMethod.GET ? requestSpec
 					: requestSpec.bodyValue(requestBody);
-			log.info("Calling metric system endpoint. baseUrl={}, path={}, apiId={}, arguments={}",
-					properties.getBaseUrl(), resolvedPath, definition.apiId(), arguments.keySet());
+			log.info("Calling metric system endpoint. baseUrl={}, path={}, apiId={}, params={}, body={}",
+					properties.getBaseUrl(), resolvedPath, definition.apiId(), arguments, requestBody);
 			String body = headersSpec.retrieve()
 				.bodyToMono(String.class)
 				.timeout(Duration.ofMillis(properties.getTimeoutMs()))

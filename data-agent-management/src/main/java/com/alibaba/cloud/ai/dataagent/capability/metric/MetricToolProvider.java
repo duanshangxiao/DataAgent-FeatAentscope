@@ -288,13 +288,14 @@ class MetricToolProvider {
 		public String call(String toolInput, ToolContext toolContext) {
 			try {
 				MetricQueryRequest request = objectMapper.readValue(toolInput, MetricQueryRequest.class);
-				log.info("Metric query execute invoked. operationId={}, metricCode={}, timeRange={}, limit={}",
-						request.getOperationId(), request.getMetricCode(), request.getTimeRange(), request.getLimit());
+				AgentRequest agentRequest = ToolContextRequestResolver.resolveGraphRequest(toolContext);
+				log.info("Metric query execute invoked. operationId={}, query={}, arguments={}, threadId={}",
+						request.getOperationId(), request.getQuery(), request.getArguments(),
+						agentRequest != null ? agentRequest.getThreadId() : "N/A");
 				MetricQueryResult result = metricQueryExecutionService.execute(request);
 				log.info("Metric query execute completed. identifier={}, status={}, summary={}, rowCount={}",
 						pickIdentifier(request.getOperationId(), request.getMetricCode()), result.status(),
 						result.summary(), result.rows() == null ? 0 : result.rows().size());
-				AgentRequest agentRequest = ToolContextRequestResolver.resolveGraphRequest(toolContext);
 				answerTraceExplainStore.recordMetricQueryResult(agentRequest,
 						pickIdentifier(request.getOperationId(), request.getMetricCode()), result.summary());
 				return objectMapper.writeValueAsString(result);

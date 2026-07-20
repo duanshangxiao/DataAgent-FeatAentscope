@@ -42,4 +42,6 @@ public class AgentRequest {
 
 	private boolean rejectedPlan;
 
+	private String preferredCapability;
+
 }

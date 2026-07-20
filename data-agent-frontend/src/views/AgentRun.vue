@@ -66,6 +66,13 @@
                   :pageSize="resultSetPageSize"
                 />
               </div>
+              <!-- 工具结果消息使用结构化组件 -->
+              <div v-else-if="message.messageType === 'tool-result' && tryParseToolResult(message.content)">
+                <ToolResultDisplay
+                  :nodeName="(tryParseToolResult(message.content) || [])[0]?.nodeName || ''"
+                  :nodeBlock="tryParseToolResult(message.content) || []"
+                />
+              </div>
               <div
                 v-else-if="message.messageType === 'markdown-report'"
                 class="markdown-report-message"
@@ -133,8 +140,8 @@
             </div>
 
             <!-- 流式响应显示区域 -->
-            <div v-if="isStreaming" class="streaming-response">
-              <div class="streaming-header">
+            <div v-if="isStreaming || nodeBlocks.length > 0" class="streaming-response">
+              <div v-if="isStreaming" class="streaming-header">
                 <el-icon class="loading-icon"><Loading /></el-icon>
                 <span>智能体正在处理中...</span>
               </div>
@@ -178,6 +185,19 @@
                       />
                     </div>
                   </div>
+                  <!-- 工具节点使用专用渲染组件 -->
+                  <div
+                    v-else-if="
+                      nodeBlock.length > 0 &&
+                      nodeBlock[0].nodeName &&
+                      nodeBlock[0].nodeName.startsWith('tool:')
+                    "
+                  >
+                    <ToolResultDisplay
+                      :nodeName="nodeBlock[0].nodeName"
+                      :nodeBlock="nodeBlock"
+                    />
+                  </div>
                   <!-- 其他节点使用原来的 HTML 渲染方式 -->
                   <div v-else v-html="generateNodeHtml(nodeBlock)"></div>
                 </template>
@@ -220,6 +240,18 @@
                     v-model="requestOptions.clarifyCheckEnabled"
                     :disabled="isStreaming || isSubmittingMessage"
                   />
+                </div>
+                <div class="switch-item">
+                  <span class="switch-label">查询方式</span>
+                  <el-radio-group
+                    v-model="requestOptions.preferredCapability"
+                    :disabled="isStreaming"
+                    size="small"
+                  >
+                    <el-radio-button value="">智能路由</el-radio-button>
+                    <el-radio-button value="metric-system">指标查询</el-radio-button>
+                    <el-radio-button value="database">数据库查询</el-radio-button>
+                  </el-radio-group>
                 </div>
                 <div class="switch-item">
                   <span class="switch-label">每页数量</span>
@@ -985,6 +1017,7 @@
   import MarkdownAgentContainer from '@/components/run/markdown';
   import ReportHtmlView from '@/components/run/ReportHtmlView.vue';
   import ResultSetDisplay from '@/components/run/ResultSetDisplay.vue';
+  import ToolResultDisplay from '@/components/run/ToolResultDisplay.vue';
 
   // 扩展Window接口以包含自定义方法
   declare global {
@@ -1023,6 +1056,7 @@
       MarkdownAgentContainer,
       ReportHtmlView,
       ResultSetDisplay,
+      ToolResultDisplay,
     },
     created() {
       window.copyTextToClipboard = btn => {
@@ -1110,6 +1144,7 @@
       const requestOptions = ref({
         reportFormat: 'markdown' as 'markdown' | 'html', // 'markdown' | 'html'，控制报告展示方式
         clarifyCheckEnabled: false,
+        preferredCapability: '' as string, // '' 自动路由 | 'metric-system' 指标查询 | 'database' 数据库查询
       });
       const showReportFullscreen = ref(false);
       const fullscreenReportContent = ref('');
@@ -1317,6 +1352,7 @@
             rejectedPlan: false,
             threadId: currentSession.value.id,
             runtimeRequestId: createRuntimeRequestId(),
+            preferredCapability: requestOptions.value.preferredCapability || undefined,
           };
 
           userInput.value = '';
@@ -1386,6 +1422,20 @@
           }
         }
 
+        const isToolNode =
+          node[0].nodeName && node[0].nodeName.startsWith('tool:');
+        if (isToolNode) {
+          const aiMessage: ChatMessage = {
+            sessionId,
+            role: 'assistant',
+            content: JSON.stringify(node),
+            messageType: 'tool-result',
+            metadata: metadataJson,
+          };
+          await ChatService.saveMessage(sessionId, requireResolvedAgentId(), aiMessage);
+          return;
+        }
+
         const nodeHtml = generateNodeHtml(node);
         const aiMessage: ChatMessage = {
           sessionId,
@@ -1404,6 +1454,18 @@
         try {
           // 准备流式请求
           isStreaming.value = true;
+          // 在清空 nodeBlocks 前，把 DB 中的历史消息加载到 currentMessages，
+          // 保证上一轮 AI 回复在上下文区域可见
+          if (currentSession.value) {
+            try {
+              currentMessages.value = await ChatService.getSessionMessages(
+                sessionId,
+                requireResolvedAgentId(),
+              );
+            } catch (e) {
+              console.warn('刷新历史消息失败:', e);
+            }
+          }
           nodeBlocks.value = [];
 
           let currentNodeName: string | null = null;
@@ -1674,9 +1736,15 @@
 
                 currentNodeName = null;
                 closeStream();
-                // 只有当前会话才重新加载消息
                 if (currentSession.value?.id === sessionId) {
-                  await selectSession(currentSession.value);
+                  saveViewToState(currentSession.value.id, {
+                    isStreaming,
+                    nodeBlocks,
+                    answerExplain,
+                    answerExplainVisible,
+                    pendingClarify,
+                  });
+                  await preloadSessionLatestObservability(currentSession.value.id);
                 }
               } catch (error) {
                 console.error('出现错误:', error);
@@ -1704,11 +1772,30 @@
         }
       };
 
+      const looksLikeMarkdown = (text: string): boolean => {
+        if (!text) return false;
+        return /^(#{1,6}\s|>+\s|[*-+]\s|```|\|)|\[.+\]\(.+\)|\*\*|__/.test(text);
+      };
+
       const formatMessageContent = (message: ChatMessage) => {
+        if (message.messageType === 'tool-result') return '';
         if (message.messageType === 'text') {
+          if (looksLikeMarkdown(message.content)) {
+            return markdownToHtml(message.content);
+          }
           return message.content.replace(/\n/g, '<br>');
         }
         return message.content;
+      };
+
+      const tryParseToolResult = (content: string): AgentResponse[] | null => {
+        try {
+          const parsed = JSON.parse(content);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          return null;
+        } catch {
+          return null;
+        }
       };
 
       // 服务器端下载html报告
@@ -1781,7 +1868,24 @@
           if (node[idx].textType === TextType.HTML) {
             content += node[idx].text;
           } else if (node[idx].textType === TextType.TEXT) {
-            content += node[idx].text.replace(/\n/g, '<br>');
+            const isToolNode =
+              node[0].nodeName && node[0].nodeName.startsWith('tool:');
+            let merged = '';
+            let p = idx;
+            for (; p < node.length; p++) {
+              if (node[p].textType !== TextType.TEXT) break;
+              merged += node[p].text;
+            }
+            if (!isToolNode && looksLikeMarkdown(merged)) {
+              content += markdownToHtml(merged);
+            } else {
+              content += merged.replace(/\n/g, '<br>');
+            }
+            if (p < node.length) {
+              idx = p - 1;
+            } else {
+              break;
+            }
           } else if (
             node[idx].textType === TextType.JSON ||
             node[idx].textType === TextType.PYTHON ||
@@ -2706,6 +2810,7 @@
         formatMessageContent,
         formatNodeContent,
         generateNodeHtml,
+        tryParseToolResult,
         openReportFullscreen,
         closeReportFullscreen,
         downloadMarkdownReportFromMessage,

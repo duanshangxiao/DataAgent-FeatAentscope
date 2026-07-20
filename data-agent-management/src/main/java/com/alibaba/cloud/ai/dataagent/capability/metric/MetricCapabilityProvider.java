@@ -106,8 +106,7 @@ public class MetricCapabilityProvider implements CapabilityProvider {
 			return CapabilityRouteResult.noMatch(capabilityId(), "指标能力未启用，不参与当前问题路由。");
 		}
 		if (circuitBreaker.isOpen()) {
-			log.warn("Metric circuit breaker is OPEN, metrics unavailable. agentId={}", agentId);
-			return CapabilityRouteResult.noMatch(capabilityId(), "指标系统熔断，暂时不可用。");
+			log.warn("Metric circuit breaker is OPEN, allowing MIXED routing with degraded note. agentId={}", agentId);
 		}
 		return CapabilityRouteResult.builder()
 			.routeType(CapabilityRouteType.MIXED)

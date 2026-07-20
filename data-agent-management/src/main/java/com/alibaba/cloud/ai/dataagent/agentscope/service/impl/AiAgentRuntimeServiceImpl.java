@@ -246,7 +246,8 @@ public class AiAgentRuntimeServiceImpl implements AgentService {
 				ModelConfigDTO modelConfig = modelConfigDataService.getActiveConfigByType(ModelType.CHAT);
 				validateModelConfig(modelConfig);
 				Map<String, ToolCallback> baseToolCallbacks = agentScopeToolkitFactory.getToolCallbacks(request.getAgentId());
-				CapabilityRouteResult routeResult = capabilityRoutingService.route(request.getAgentId(), request.getQuery());
+				CapabilityRouteResult routeResult = capabilityRoutingService.route(request.getAgentId(), request.getQuery(),
+						request.getPreferredCapability());
 				log.info(
 						"Capability routing resolved. agentId={}, threadId={}, runtimeRequestId={}, routeType={}, capabilityId={}, matchedTargets={}, reason={}, baseToolCount={}, metricToolCount={}, databaseToolCount={}",
 						request.getAgentId(), request.getThreadId(), request.getRuntimeRequestId(),
@@ -263,7 +264,8 @@ public class AiAgentRuntimeServiceImpl implements AgentService {
 						request.getAgentId(), request.getThreadId(), request.getRuntimeRequestId(), toolCallbacks.size(),
 						countToolsByPrefix(toolCallbacks, "metric."), countDatabaseTools(toolCallbacks),
 						summarizeToolNames(toolCallbacks));
-				String runtimeInstructions = capabilityRoutingService.buildRuntimeInstructions(routeResult);
+				String runtimeInstructions = capabilityRoutingService.buildRuntimeInstructions(routeResult,
+						request.getPreferredCapability());
 				Model model = agentScopeModelFactory.create(dynamicModelFactory.createChatModel(modelConfig),
 						modelConfig.getModelName(), toolCallbacks);
 				ManagedAgent managedAgent = managedAgentRegistry.getRequired();
