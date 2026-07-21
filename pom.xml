@@ -69,6 +69,7 @@
     <opentelemetry-instrumentation.version>2.24.0-alpha</opentelemetry-instrumentation.version>
     <awaitility.version>4.2.2</awaitility.version>
     <jacoco-maven-plugin.version>0.8.12</jacoco-maven-plugin.version>
+    <maven-surefire-plugin.version>3.2.5</maven-surefire-plugin.version>
   </properties>
 
   <dependencyManagement>
@@ -365,6 +366,11 @@
             </path>
           </annotationProcessorPaths>
         </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>${maven-surefire-plugin.version}</version>
       </plugin>
     </plugins>
   </build>

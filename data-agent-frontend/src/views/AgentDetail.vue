@@ -215,19 +215,19 @@
 
       const activeMenuIndex: Ref<string> = ref('basic');
       const agent: Ref<Agent> = ref({
-        id: '',
+        id: 0,
         name: 'loading...',
         description: '',
         status: 'draft',
-        createdAt: '',
-        updatedAt: '',
+        createTime: '',
+        updateTime: '',
         avatar: '',
         prompt: '',
         category: '',
-        adminId: '',
+        adminId: 0,
         tags: '',
         humanReviewEnabled: false,
-      } as Agent);
+      });
 
       const headerFileInput = ref<HTMLInputElement | null>(null);
       const headerUploading = ref(false);

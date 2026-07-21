@@ -19,7 +19,7 @@ import hljs from 'highlight.js/lib/core';
 import Sql from 'highlight.js/lib/languages/sql';
 import Python from 'highlight.js/lib/languages/python';
 import Json from 'highlight.js/lib/languages/json';
-import type { MarkdownIt } from 'markdown-it';
+import type MarkdownIt from 'markdown-it';
 
 hljs.registerLanguage('sql', Sql);
 hljs.registerLanguage('json', Json);

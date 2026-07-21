@@ -10,7 +10,7 @@
 
 - **JDK**: 17 或更高版本
 - **Maven**: 3.6 或更高版本
-- **Node.js**: 16 或更高版本
+- **Node.js**: 18（与 `.nvmrc` 和前端 CI 一致）
 - **MySQL**: 5.7 或更高版本
 - **Git**: 版本控制工具
 - **IDE**: IntelliJ IDEA 或 Eclipse (推荐 IntelliJ IDEA)
@@ -58,16 +58,11 @@ cd spring-ai-alibaba-data-agent
 
 ## 🔧 核心模块说明
 
-### 1. StateGraph 工作流引擎
+### 1. AgentScope ReActAgent 运行时
 
-工作流基于 Spring AI Alibaba 的 StateGraph 实现，核心节点包括：
+当前对话主链路由 `AiAgentRuntimeServiceImpl` 编排，使用 `CommonAgent` 创建 AgentScope `ReActAgent`。运行时根据 Agent 绑定关系动态装配数据源探索、语义模型、业务知识、SQL 安全和本地技能工具；`CapabilityRoutingService` 决定数据库或指标混合路径，并注入对应规则。
 
-- **IntentRecognitionNode**: 意图识别
-- **EvidenceRecallNode**: 证据召回
-- **PlannerNode**: 计划生成
-- **SqlGenerateNode**: SQL 生成
-- **PythonGenerateNode**: Python 代码生成
-- **ReportGeneratorNode**: 报告生成
+历史 StateGraph 节点流水线不再是当前对话主链路。修改运行行为时应优先检查运行时服务、能力路由、工具目录、Hook/SSE 事件和 AgentScope memory。
 
 ### 2. 多模型调度
 
@@ -106,7 +101,7 @@ public class AgentVectorStoreService {
 
 ## 🎨 编码规范
 
-> AI agent 编码时还应遵循 `AGENT.md` 中的约束和禁止事项，以及 `CONTRIBUTING-zh.md` 中的 Spring 代码格式要求。
+> AI agent 编码时还应遵循 `AGENTS.md` 中的约束和禁止事项，以及 `CONTRIBUTING-zh.md` 中的 Spring 代码格式要求。
 
 ### Java 编码规范
 
@@ -445,7 +440,7 @@ public class AgentVectorStoreService {
 
 ### 相关技术
 
-- StateGraph 工作流引擎
+- AgentScope ReActAgent、能力路由与动态工具目录
 - MyBatis 数据访问框架
 - Vector Store 向量数据库
 - Server-Sent Events (SSE)

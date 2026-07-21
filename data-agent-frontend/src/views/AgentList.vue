@@ -251,7 +251,7 @@
         }
       };
 
-      const enterAgent = (agentId: string) => {
+      const enterAgent = (agentId: number) => {
         router.push(`/agent/${agentId}`);
       };
 
@@ -273,7 +273,8 @@
         return typeMap[status] || 'info';
       };
 
-      const formatTime = (time: string) => {
+      const formatTime = (time?: string) => {
+		if (!time) return '-';
         if (!time) return '';
         return time.replace(/\//g, '/');
       };

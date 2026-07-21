@@ -130,7 +130,7 @@
 
   // 使用计算属性提取图表渲染所需的关键数据
   const chartKeyData = computed(() => {
-    const displayStyle: ResultDisplayStyleBO = props.resultData.displayStyle || {};
+    const displayStyle: Partial<ResultDisplayStyleBO> = props.resultData.displayStyle || {};
     const data = props.resultData.resultSet.data || [];
     return {
       type: displayStyle?.type,

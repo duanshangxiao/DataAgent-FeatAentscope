@@ -46,7 +46,7 @@
 
 | 特性 | 说明 |
 | :--- | :--- |
-| **智能数据分析** | 基于 StateGraph 的 Text-to-SQL 转换，支持复杂的多表查询和多轮对话意图理解。 |
+| **智能数据分析** | 基于 AgentScope ReActAgent 与动态工具的 Text-to-SQL 分析，支持受约束的多表查询和多轮会话。 |
 | **Python 深度分析** | 内置 Docker/Local Python 执行器，自动生成并执行 Python 代码进行统计分析与机器学习预测。 |
 | **智能报告生成** | 分析结果自动汇总为包含 ECharts 图表的 HTML/Markdown 报告，所见即所得。 |
 | **人工反馈机制** | 独创的 Human-in-the-loop 机制，支持用户在计划生成阶段进行干预和调整。 |
@@ -178,7 +178,7 @@ spring:
 | 文档 | 此文档包含的内容 |
 | :--- | :--- |
 | [快速开始](docs/QUICK_START.md) | 环境要求、数据库导入、基础配置、系统初体验 |
-| [架构设计](docs/ARCHITECTURE.md) | 系统分层架构、StateGraph与工作流设计、核心模块时序图 |
+| [架构设计](docs/ARCHITECTURE.md) | 当前 ReActAgent 主链路、能力路由、动态工具和数据存储设计 |
 | [开发者指南](docs/DEVELOPER_GUIDE.md) | 开发环境搭建、详细配置手册、代码规范、扩展开发(向量库/模型) |
 | [高级功能](docs/ADVANCED_FEATURES.md) | API Key 调用、MCP 服务器配置、自定义混合检索策略、Python执行器配置 |
 | [知识配置最佳实践](docs/KNOWLEDGE_USAGE.md) | 语义模型，业务知识，智能体知识的解释和使用 |

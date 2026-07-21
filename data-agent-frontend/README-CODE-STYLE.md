@@ -32,7 +32,7 @@
 1. 进入前端项目目录：
 
 ```bash
-cd spring-ai-alibaba-data-agent-frontend
+cd data-agent-frontend
 ```
 
 2. 安装所有依赖：

@@ -58,7 +58,6 @@ class ModelConfigService {
    * @param config 模型配置对象
    */
   async add(config: Omit<ModelConfig, 'id'>): Promise<ApiResponse<string>> {
-    console.log('config: ' + config);
     const response = await axios.post<ApiResponse<string>>(`${API_BASE_URL}/add`, config);
     return response.data;
   }

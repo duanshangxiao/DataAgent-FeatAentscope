@@ -46,7 +46,7 @@ Additionally, this project natively supports **MCP (Model Context Protocol)**, e
 
 | Feature | Description |
 | :--- | :--- |
-| **Intelligent Data Analysis** | StateGraph-based Text-to-SQL conversion, supporting complex multi-table queries and multi-turn conversation intent understanding. |
+| **Intelligent Data Analysis** | AgentScope ReActAgent and dynamic-tool based Text-to-SQL analysis with constrained multi-table queries and multi-turn sessions. |
 | **Python Deep Analysis** | Built-in Docker/Local Python executor, automatically generating and executing Python code for statistical analysis and machine learning predictions. |
 | **Intelligent Report Generation** | Analysis results are automatically summarized into HTML/Markdown reports with ECharts visualizations, WYSIWYG. |
 | **Human Feedback Mechanism** | Innovative Human-in-the-loop mechanism, supporting user intervention and adjustments during the plan generation phase. |
@@ -133,7 +133,7 @@ The capability is disabled by default. It becomes active only when all of the fo
 | Document | Contents |
 | :--- | :--- |
 | [Quick Start](docs/QUICK_START.md) | Environment requirements, database import, basic configuration, getting started |
-| [Architecture Design](docs/ARCHITECTURE.md) | System layered architecture, StateGraph and workflow design, core module sequence diagrams |
+| [Architecture Design](docs/ARCHITECTURE.md) | Current ReActAgent flow, capability routing, dynamic tools, and data storage |
 | [Developer Guide](docs/DEVELOPER_GUIDE.md) | Development environment setup, detailed configuration manual, coding standards, extension development (vector DB/models) |
 | [Advanced Features](docs/ADVANCED_FEATURES.md) | API Key invocation, MCP server configuration, custom hybrid retrieval strategies, Python executor configuration |
 | [Knowledge Configuration Best Practices](docs/KNOWLEDGE_USAGE.md) | Explanation and usage of semantic models, business knowledge, and agent knowledge |

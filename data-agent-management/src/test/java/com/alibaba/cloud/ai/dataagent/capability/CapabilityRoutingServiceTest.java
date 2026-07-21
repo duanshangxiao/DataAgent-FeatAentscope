@@ -24,7 +24,6 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CapabilityRoutingServiceTest {
@@ -50,7 +49,7 @@ class CapabilityRoutingServiceTest {
 	}
 
 	@Test
-	void buildRoutedToolCallbacks_filtersDatabaseToolsWhenMetricOnly() {
+	void buildRoutedToolCallbacks_keepsDatabaseFallbackWhenMetricOnly() {
 		Map<String, ToolCallback> baseTools = new LinkedHashMap<>();
 		baseTools.put("datasource.demo.search", new NamedToolCallback("datasource.demo.search"));
 		baseTools.put("sql_guard.check", new NamedToolCallback("sql_guard.check"));
@@ -91,8 +90,8 @@ class CapabilityRoutingServiceTest {
 
 		Map<String, ToolCallback> routed = service.buildRoutedToolCallbacks("1", routeResult, baseTools);
 
-		assertFalse(routed.containsKey("datasource.demo.search"));
-		assertFalse(routed.containsKey("sql_guard.check"));
+		assertTrue(routed.containsKey("datasource.demo.search"));
+		assertTrue(routed.containsKey("sql_guard.check"));
 		assertTrue(routed.containsKey("domain_business_knowledge.search"));
 		assertTrue(routed.containsKey("metric.catalog.search"));
 	}

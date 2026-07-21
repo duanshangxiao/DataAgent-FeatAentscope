@@ -485,13 +485,13 @@
         }
       };
 
-      const executeBatchImport = async (items: SemanticModelImportItem[]) => {
+      const executeBatchImport = async (items: unknown[]) => {
         try {
           const datasourceId = await getActiveDatasourceId();
           return await semanticModelService.batchImport({
             agentId: props.agentId,
             datasourceId,
-            items,
+            items: items as SemanticModelImportItem[],
           });
         } catch (error) {
           ElMessage.error(`批量导入失败：${getErrorMessage(error, '导入失败')}`);

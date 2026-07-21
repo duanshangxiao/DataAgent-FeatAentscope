@@ -272,7 +272,7 @@
           // 上传文件
           const response = await fileUploadApi.uploadAvatar(file);
 
-          if (response.success) {
+          if (response.success && response.url) {
             // 上传成功，使用服务器返回的URL
             agentForm.avatar = response.url;
             ElMessage.success('头像上传成功');

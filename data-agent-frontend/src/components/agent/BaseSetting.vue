@@ -143,9 +143,9 @@
           } else {
             ElMessage.success('更新成功！');
           }
-        } catch (e) {
-          console.error('更新智能体失败:', e);
-          ElMessage.error('更新失败：' + (e.message || '未知错误'));
+        } catch (error) {
+          console.error('更新智能体失败:', error);
+          ElMessage.error('更新失败：' + (error instanceof Error ? error.message : '未知错误'));
         }
       };
 
@@ -174,9 +174,9 @@
         }
       };
 
-      const formatDateTime = (dateString: string): string => {
-        if (!dateString) return '-';
-        const date = new Date(dateString);
+      const formatDateTime = (dateValue?: string | Date): string => {
+        if (!dateValue) return '-';
+        const date = new Date(dateValue);
         return date.toLocaleString('zh-CN', {
           year: 'numeric',
           month: '2-digit',

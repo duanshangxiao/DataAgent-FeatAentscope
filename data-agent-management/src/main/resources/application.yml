@@ -12,7 +12,7 @@ spring:
   datasource:
     url: ${DATA_AGENT_DATASOURCE_URL:jdbc:mysql://127.0.0.1:3360/feat-agentscope?useUnicode=true&characterEncoding=utf-8&zeroDateTimeBehavior=convertToNull&transformedBitIsBoolean=true&allowMultiQueries=true&allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=Asia/Shanghai}
     username: ${DATA_AGENT_DATASOURCE_USERNAME:root}
-    password: ${DATA_AGENT_DATASOURCE_PASSWORD:Duansx@240612}
+    password: ${DATA_AGENT_DATASOURCE_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver
     type: com.alibaba.druid.pool.DruidDataSource
   sql:
@@ -29,8 +29,8 @@ spring:
       # type: pgvector
       # pgvector:
       #   url: ${DATA_AGENT_VECTORSTORE_URL:jdbc:postgresql://localhost:5432/vector_db_feat?currentSchema=public}
-      #   username: duansx
-      #   password: bigdata321
+      #   username: ${DATA_AGENT_VECTORSTORE_USERNAME:}
+      #   password: ${DATA_AGENT_VECTORSTORE_PASSWORD:}
       #   driver-class-name: org.postgresql.Driver
       #   schema-name: public
       #   table-name: cares_data_agent_weihai

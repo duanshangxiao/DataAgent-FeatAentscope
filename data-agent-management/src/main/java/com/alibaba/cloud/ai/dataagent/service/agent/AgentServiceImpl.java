@@ -68,9 +68,8 @@ public class AgentServiceImpl implements AgentService {
 	@Transactional
 	public Agent save(Agent agent) {
 		LocalDateTime now = LocalDateTime.now();
-		if (agent.getAgentType() == null || agent.getAgentType().isBlank()) {
-			agent.setAgentType(CommonAgent.AGENT_TYPE);
-		}
+		// 对外可以接收旧类型字段，但业务落库和运行时语义只保留 commonagent。
+		agent.setAgentType(CommonAgent.AGENT_TYPE);
 
 		if (agent.getId() == null) {
 			// Add

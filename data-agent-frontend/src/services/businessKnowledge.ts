@@ -56,7 +56,7 @@ class BusinessKnowledgeService {
    */
   async list(agentId: number, keyword?: string): Promise<BusinessKnowledgeVO[]> {
     try {
-      const params = { agentId: agentId.toString() };
+      const params: Record<string, string> = { agentId: agentId.toString() };
       if (keyword) {
         params.keyword = keyword;
       }

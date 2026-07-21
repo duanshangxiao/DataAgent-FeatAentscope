@@ -1,6 +1,6 @@
 # Elasticsearch 集成说明
 
-> 项目可选集成 ES 作为向量存储后端，替代默认的 PGVector，启用向量 + 关键词混合检索。
+> 当前项目默认使用 ES 作为向量存储后端并启用向量 + 关键词混合检索；PGVector 配置作为可选切换方案保留。
 
 ## 1. 架构定位
 
@@ -11,7 +11,7 @@
                               │
           ┌───────────────────┼───────────────────┐
           │                   │                   │
-   PGVector (默认)     Elasticsearch (可选)   Simple (H2 测试)
+   PGVector (可选)     Elasticsearch (默认)   Simple (H2 测试)
   ──────────────────  ──────────────────────  ──────────────
   spring.ai.           spring.ai.             spring.ai.
   vectorstore.         vectorstore.           vectorstore.

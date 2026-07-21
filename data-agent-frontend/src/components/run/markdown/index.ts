@@ -18,13 +18,7 @@ import MarkdownAgentContainer from './MarkdownAgentContainer.vue';
 import type { App } from 'vue';
 
 const install = function (Vue: App): void {
-  Vue.component(MarkdownAgentContainer.name, MarkdownAgentContainer);
+  Vue.component(MarkdownAgentContainer.name || 'MarkdownAgentContainer', MarkdownAgentContainer);
 };
 
-/* istanbul ignore if */
-if (typeof window !== 'undefined' && window.Vue) {
-  install(window.Vue);
-}
-
-MarkdownAgentContainer.install = install;
-export default MarkdownAgentContainer;
+export default Object.assign(MarkdownAgentContainer, { install });

@@ -18,7 +18,7 @@ import axios from 'axios';
 import { ApiResponse } from '@/services/common';
 
 export interface Datasource {
-  id?: number;
+  id: number;
   name?: string;
   type?: string;
   host?: string;

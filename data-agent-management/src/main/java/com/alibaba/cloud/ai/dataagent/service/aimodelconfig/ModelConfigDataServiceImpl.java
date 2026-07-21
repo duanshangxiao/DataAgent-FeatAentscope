@@ -20,6 +20,7 @@ import com.alibaba.cloud.ai.dataagent.converter.ModelConfigConverter;
 import com.alibaba.cloud.ai.dataagent.dto.ModelConfigDTO;
 import com.alibaba.cloud.ai.dataagent.entity.ModelConfig;
 import com.alibaba.cloud.ai.dataagent.mapper.ModelConfigMapper;
+import com.alibaba.cloud.ai.dataagent.util.SensitiveValueUtil;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -61,7 +62,7 @@ public class ModelConfigDataServiceImpl implements ModelConfigDataService {
 
 	@Override
 	public List<ModelConfigDTO> listConfigs() {
-		return modelConfigMapper.findAll().stream().map(ModelConfigConverter::toDTO).collect(Collectors.toList());
+		return modelConfigMapper.findAll().stream().map(ModelConfigConverter::toMaskedDTO).collect(Collectors.toList());
 	}
 
 	@Override
@@ -74,7 +75,12 @@ public class ModelConfigDataServiceImpl implements ModelConfigDataService {
 	private void clean(ModelConfigDTO dto) {
 		dto.setModelName(dto.getModelName().trim());
 		dto.setBaseUrl(dto.getBaseUrl().trim());
-		dto.setApiKey(dto.getApiKey().trim());
+		if (dto.getApiKey() != null) {
+			dto.setApiKey(dto.getApiKey().trim());
+		}
+		if (dto.getProxyPassword() != null) {
+			dto.setProxyPassword(dto.getProxyPassword().trim());
+		}
 		if (dto.getCompletionsPath() != null) {
 			dto.setCompletionsPath(dto.getCompletionsPath().trim());
 		}
@@ -123,10 +129,12 @@ public class ModelConfigDataServiceImpl implements ModelConfigDataService {
 		oldEntity.setProxyHost(dto.getProxyHost());
 		oldEntity.setProxyPort(dto.getProxyPort());
 		oldEntity.setProxyUsername(dto.getProxyUsername());
-		oldEntity.setProxyPassword(dto.getProxyPassword());
+		if (SensitiveValueUtil.containsUsableSecret(dto.getProxyPassword())) {
+			oldEntity.setProxyPassword(dto.getProxyPassword());
+		}
 
-		// 只有当前端传来的 Key 不包含 "****" 时，才说明用户真的改了 Key，否则保持原样
-		if (dto.getApiKey() != null && !dto.getApiKey().contains("****")) {
+		// 脱敏占位符或空值表示用户没有修改密钥，保留数据库原值。
+		if (SensitiveValueUtil.containsUsableSecret(dto.getApiKey())) {
 			oldEntity.setApiKey(dto.getApiKey());
 		}
 	}

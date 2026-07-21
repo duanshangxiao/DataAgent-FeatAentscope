@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-import type { MarkdownIt } from 'markdown-it';
+import type MarkdownIt from 'markdown-it';
 
 export default (md: MarkdownIt) => {
-  const temp = md.renderer.rules.fence.bind(md.renderer.rules);
+  const fallbackFence = md.renderer.rules.fence;
   md.renderer.rules.fence = (tokens, idx, options, env, slf) => {
     const token = tokens[idx];
     if (token.info === 'echarts') {
@@ -41,6 +41,8 @@ export default (md: MarkdownIt) => {
         return `<pre><code class="language-echarts md-echarts">${code}</code></pre>`;
       }
     }
-    return temp(tokens, idx, options, env, slf);
+    return fallbackFence
+      ? fallbackFence(tokens, idx, options, env, slf)
+      : slf.renderToken(tokens, idx, options);
   };
 };

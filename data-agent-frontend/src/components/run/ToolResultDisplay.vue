@@ -115,7 +115,13 @@
 
     const trimmed = jsonText.trim();
     if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) {
-      return { category, json: null, jsonText, parseError: '工具返回非 JSON 格式，降级显示原文' };
+      return {
+        category,
+        json: null,
+        jsonText,
+        waiting: false,
+        parseError: '工具返回非 JSON 格式，降级显示原文',
+      };
     }
 
     try {
@@ -153,10 +159,6 @@
 
   function isKnowledgeResult(data: any): boolean {
     return data && typeof data === 'object' && 'hits' in data && Array.isArray(data.hits);
-  }
-
-  function isMetricResult(data: any): boolean {
-    return data && typeof data === 'object' && ('candidates' in data || 'status' in data || 'metricCode' in data);
   }
 
   function isMetricDescribe(data: any): boolean {
@@ -203,7 +205,7 @@
     return decision;
   }
 
-  function getSeverityTagType(severity: string): 'danger' | 'warning' | 'info' | '' {
+  function getSeverityTagType(severity: string): 'danger' | 'warning' | 'info' {
     if (!severity) return 'info';
     const s = severity.toLowerCase();
     if (s === 'error' || s === 'critical') return 'danger';

@@ -10,7 +10,7 @@ Welcome to participate in the development of the DataAgent project! This documen
 
 - **JDK**: 17 or higher
 - **Maven**: 3.6 or higher
-- **Node.js**: 16 or higher
+- **Node.js**: 18 (aligned with `.nvmrc` and frontend CI)
 - **MySQL**: 5.7 or higher
 - **Git**: Version control tool
 - **IDE**: IntelliJ IDEA or Eclipse (IntelliJ IDEA recommended)
@@ -58,16 +58,11 @@ cd spring-ai-alibaba-data-agent
 
 ## Core Module Description
 
-### 1. StateGraph Workflow Engine
+### 1. AgentScope ReActAgent Runtime
 
-The workflow is based on Spring AI Alibaba's StateGraph implementation. Core nodes include:
+The current chat path is orchestrated by `AiAgentRuntimeServiceImpl` and uses `CommonAgent` to create an AgentScope `ReActAgent`. Datasource exploration, semantic models, business knowledge, SQL safety, and local skill tools are assembled dynamically from agent bindings. `CapabilityRoutingService` selects the database or metric-mixed path and injects the corresponding instructions.
 
-- **IntentRecognitionNode**: Intent recognition
-- **EvidenceRecallNode**: Evidence recall
-- **PlannerNode**: Plan generation
-- **SqlGenerateNode**: SQL generation
-- **PythonGenerateNode**: Python code generation
-- **ReportGeneratorNode**: Report generation
+The historical StateGraph node pipeline is no longer the main chat path. Runtime changes should focus on the runtime service, capability routing, tool catalog, Hook/SSE events, and AgentScope memory.
 
 ### 2. Multi-Model Scheduling
 
@@ -390,7 +385,7 @@ Environment variables: `LANGFUSE_ENABLED`, `LANGFUSE_HOST`, `LANGFUSE_PUBLIC_KEY
 
 ### Related Technologies
 
-- StateGraph Workflow Engine
+- AgentScope ReActAgent, capability routing, and dynamic tool catalog
 - MyBatis Data Access Framework
 - Vector Store
 - Server-Sent Events (SSE)

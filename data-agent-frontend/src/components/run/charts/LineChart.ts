@@ -44,9 +44,9 @@ export class LineChart extends BaseChart {
 
     const xAxisData = this.data.map(item => item[xAxis.value]);
     const colors: string[] = generateUniqueColors(yAxes.length);
-    const seriesData = yAxes.map((yAxis, index) => ({
+    const seriesData: echarts.LineSeriesOption[] = yAxes.map((yAxis, index) => ({
       name: yAxis.name,
-      type: 'line',
+      type: 'line' as const,
       smooth: true,
       data: this.data.map(item => {
         const value = item[yAxis.value];

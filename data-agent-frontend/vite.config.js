@@ -17,6 +17,8 @@ import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { resolve } from 'path';
 
+const backendTarget = process.env.VITE_BACKEND_TARGET || 'http://localhost:8065';
+
 export default defineConfig({
   plugins: [vue()],
   resolve: {
@@ -28,15 +30,15 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://localhost:8065',
+        target: backendTarget,
         changeOrigin: true,
       },
       '/nl2sql': {
-        target: 'http://localhost:8065',
+        target: backendTarget,
         changeOrigin: true,
       },
       '/uploads': {
-        target: 'http://localhost:8065',
+        target: backendTarget,
         changeOrigin: true,
       },
     },

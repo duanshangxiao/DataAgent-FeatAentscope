@@ -1035,27 +1035,29 @@
           const response = await agentDatasourceService.getAgentDatasource(props.agentId);
           agentDatasourceList.value = response || [];
           const agentDatasource: AgentDatasource[] = response || [];
-          datasource.value = agentDatasource.map(item => {
-            const datasourceItem = { ...item.datasource };
+          datasource.value = agentDatasource.flatMap(item => {
+            if (!item.datasource) {
+              return [];
+            }
+            const datasourceItem: Datasource = { ...item.datasource };
+            const datasourceId = datasourceItem.id;
             datasourceItem.status = item.isActive === 1 ? 'active' : 'inactive';
 
-            if (item.datasource?.id) {
-              if (item.selectTables) {
-                selectedTables.value[item.datasource.id] = [...item.selectTables];
-              }
-              selectedColumns.value[item.datasource.id] = Object.entries(
-                item.selectColumns || {},
-              ).reduce<Record<string, string[]>>((result, [tableName, columns]) => {
-                result[tableName] = [...columns];
-                return result;
-              }, {});
-              columnRestrictionEnabled.value[item.datasource.id] = {};
-              Object.keys(selectedColumns.value[item.datasource.id]).forEach(tableName => {
-                columnRestrictionEnabled.value[item.datasource.id][tableName] = true;
-              });
+            if (item.selectTables) {
+              selectedTables.value[datasourceId] = [...item.selectTables];
             }
+            selectedColumns.value[datasourceId] = Object.entries(item.selectColumns || {}).reduce<
+              Record<string, string[]>
+            >((result, [tableName, columns]) => {
+              result[tableName] = [...columns];
+              return result;
+            }, {});
+            columnRestrictionEnabled.value[datasourceId] = {};
+            Object.keys(selectedColumns.value[datasourceId]).forEach(tableName => {
+              columnRestrictionEnabled.value[datasourceId][tableName] = true;
+            });
 
-            return datasourceItem;
+            return [datasourceItem];
           });
         } catch (error) {
           ElMessage.error('加载当前智能体的数据源列表失败');
@@ -1077,13 +1079,15 @@
       };
 
       const applyAgentDatasourceSnapshot = (snapshot: AgentDatasource): void => {
-        const datasourceId = snapshot.datasource?.id;
-        if (!datasourceId || !snapshot.datasource) {
+        const snapshotDatasource = snapshot.datasource;
+        const datasourceId = snapshotDatasource?.id;
+        if (!datasourceId || !snapshotDatasource) {
           return;
         }
 
         const nextSnapshot: AgentDatasource = {
           ...snapshot,
+          datasource: snapshotDatasource,
           selectTables: [...(snapshot.selectTables || [])],
           selectColumns: Object.entries(snapshot.selectColumns || {}).reduce<
             Record<string, string[]>
@@ -1103,7 +1107,7 @@
         }
 
         const datasourceSnapshot: Datasource = {
-          ...nextSnapshot.datasource,
+          ...snapshotDatasource,
           status: nextSnapshot.isActive === 1 ? 'active' : 'inactive',
         };
         const datasourceIndex = datasource.value.findIndex(item => item.id === datasourceId);
@@ -1181,7 +1185,7 @@
         columnLoadingStates.value[loadingKey] = true;
         try {
           const columns = await agentDatasourceService.getVisibleTableColumns(
-            String(props.agentId),
+            props.agentId,
             datasourceId,
             tableName,
           );
@@ -1285,7 +1289,7 @@
         try {
           if (active) {
             const response: ApiResponse = await agentDatasourceService.addDatasourceToAgent(
-              String(props.agentId),
+              props.agentId,
               datasourceId,
             );
             if (response.success) {
@@ -1305,7 +1309,7 @@
             }
 
             const response: ApiResponse = await agentDatasourceService.toggleDatasourceForAgent(
-              String(props.agentId),
+              props.agentId,
               { datasourceId, isActive: false },
             );
             if (response.success) {
@@ -1330,6 +1334,10 @@
           return;
         }
         try {
+          if (!datasourceId) {
+            ElMessage.error('数据源ID不存在，无法测试连接');
+            return;
+          }
           const response: ApiResponse = await datasourceService.testConnection(datasourceId);
           if (response.success) {
             ElMessage.success('测试连接成功！');
@@ -1601,7 +1609,7 @@
         updateLoadingStates.value[datasource.id] = true;
         try {
           const response = await agentDatasourceService.updateDatasourceTables(
-            String(props.agentId),
+            props.agentId,
             {
               datasourceId: datasource.id,
               tables: selectedTables.value[datasource.id] || [],
@@ -1726,7 +1734,7 @@
             }));
 
           const response = await agentDatasourceService.updateDatasourceColumns(
-            String(props.agentId),
+            props.agentId,
             {
               datasourceId,
               tables,
@@ -1965,7 +1973,7 @@
       };
 
       // 删除逻辑外键
-      const deleteForeignKey = async (foreignKey: LogicalRelation, index: number) => {
+      const deleteForeignKey = async (_foreignKey: LogicalRelation, index: number) => {
         try {
           await ElMessageBox.confirm('确定要删除这条逻辑外键关系吗？', '确认删除', {
             confirmButtonText: '确定',

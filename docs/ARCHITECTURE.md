@@ -1,212 +1,134 @@
 # 项目架构说明
 
-> Spring AI Alibaba DataAgent — 基于 Spring AI + AgentScope 的智能数据分析 Agent 平台
+[English](./ARCHITECTURE-en.md)
 
-## 技术栈
+> 本文描述当前代码中的真实主链路。历史版本中的 StateGraph 节点流水线不再是当前对话运行时架构。
 
-| 层次 | 技术 | 版本 |
-|------|------|------|
-| **语言** | Java | 17 |
-| **框架** | Spring Boot | 3.4.8 |
-| **Web 层** | Spring WebFlux (Reactive) | 3.4.8 |
-| **ORM** | MyBatis + Spring Boot Starter | 3.0.4 |
-| **业务数据库** | MySQL (Druid 连接池) | 8.0 / Druid 1.2.22 |
-| **向量库** | PostgreSQL + PGVector (HikariCP) | 42.4.1 |
-| **搜索引擎** | Elasticsearch | 8.18.0 |
-| **LLM 接入** | Spring AI + DashScope SDK | 1.1.0 / 2.15.1 |
-| **Agent 框架** | AgentScope | 1.0.11 |
-| **API 文档** | springdoc-openapi (Swagger) | 2.8.8 |
-| **可观测性** | OpenTelemetry → Langfuse | 1.32.0 |
-| **Python 执行** | Docker Java / 本地进程 | 3.5.3 |
-| **SQL 解析** | JSQLParser | 4.9 |
-| **构建工具** | Maven | 3.x |
-| **前端** | Vue 3 + Vite 5 + TypeScript + Element Plus | — |
+## 1. 项目定位
 
-## 模块划分
+DataAgent 是一个可独立运行的智能数据分析功能模块，不是企业级多租户平台。当前采用单体后端加单页前端的部署形态，重点解决 Agent 配置、数据源约束、自然语言问数、指标能力接入和会话展示。
 
-本项目为 **单模块 Maven 工程**，后端核心代码均在 `data-agent-management` 模块内按包分层：
+现阶段不包含完整的身份认证、多租户数据隔离、企业级网关或分布式治理能力。部署时应位于本机或可信网络边界内。
 
-```
-spring-ai-alibaba-data-agent  (root pom, packaging=pom)
-├── data-agent-management      (Spring Boot 可执行 jar, 所有后端代码)
-└── data-agent-frontend        (Vue 3 前端, NPM 工程, 非 Maven 模块)
-```
+## 2. 技术栈与模块
 
-## 包结构约定（data-agent-management 模块）
+| 层次 | 当前实现 |
+|---|---|
+| 后端 | Java 17、Spring Boot 3.4.8、Spring WebFlux、MyBatis |
+| Agent 运行时 | AgentScope 1.0.11 `ReActAgent` |
+| 模型接入 | Spring AI、DashScope/OpenAI 兼容模型、动态模型配置 |
+| 管理数据库 | MySQL 8、Druid |
+| 向量检索 | Elasticsearch 8.18.0（当前默认）；PGVector 依赖和切换配置保留 |
+| SQL 安全 | JSQLParser、Agent 数据源表/字段白名单、`sql_guard.check` |
+| 前端 | Vue 3、TypeScript、Vite 5、Element Plus |
+| 流式协议 | WebFlux SSE |
+| 可观测性 | OpenTelemetry，可选接入 Langfuse |
 
-```
-com.alibaba.cloud.ai.dataagent
-├── DataAgentApplication.java      # @SpringBootApplication 启动类 (端口 8065)
-│
-├── controller/                     # Controller 层 (15 个)
-│   ├── AgentController             # Agent CRUD、API Key 管理
-│   ├── ChatController              # 对话交互 (SSE 流式)
-│   ├── DataAgentController         # 核心 NL2SQL 图谱分析引擎入口
-│   ├── DatasourceController        # 数据源管理
-│   ├── SemanticModelController     # 语义模型 (字段别名)
-│   ├── BusinessKnowledgeController # 业务知识库
-│   ├── AgentKnowledgeController    # Agent 知识管理
-│   ├── SkillController             # 本地技能管理
-│   ├── AgentSkillController        # Agent-技能绑定
-│   ├── AgentDatasourceController   # Agent-数据源绑定
-│   ├── AgentPresetQuestionController # 预置问题
-│   ├── FileUploadController        # 文件上传
-│   ├── ModelConfigController       # 模型配置
-│   ├── SessionEventController      # SSE 会话事件
-│   └── GlobalExceptionHandler      # 全局异常处理
-│
-├── service/                        # Service 层 (16 个子包)
-│   ├── agent/                      # Agent 管理、启动初始化
-│   ├── aimodelconfig/              # LLM 模型注册、动态切换 (AiModelRegistry)
-│   ├── business/                   # 业务知识库
-│   ├── chat/                       # 对话消息 & 会话管理
-│   ├── code/                       # Python 代码执行 (本地/Docker/AI模拟)
-│   ├── datasource/                 # 数据源连接管理 (含 DDL/SQL 执行)
-│   ├── file/                       # 文件存储 (本地/OSS)
-│   ├── hybrid/                     # 混合检索 (向量+关键词, 融合策略)
-│   ├── knowledge/                  # Agent 知识向量化、领域知识搜索
-│   ├── langfuse/                   # Langfuse 可观测上报
-│   ├── llm/                        # LLM 调用 (流式/阻塞)
-│   ├── mcp/                        # MCP Server 服务
-│   ├── schema/                     # 数据库 Schema 元数据
-│   ├── semantic/                   # 语义模型 Excel 导入导出
-│   ├── skill/                      # Agent-技能绑定、本地技能
-│   └── vectorstore/                # 向量存储服务
-│
-├── agentscope/                     # AgentScope 集成层
-│   ├── runtime/                    # Agent 运行时 (事件、Hook、适配器)
-│   ├── service/                    # AgentScope 模型工厂 & 会话
-│   ├── session/                    # 会话注册 & MySQL 会话持久化
-│   ├── template/                   # 通用 Agent 模板 (CommonAgent)
-│   └── tool/                       # Agent 工具目录 (数据源/知识/语义/SQL安全/技能)
-│
-├── entity/                         # 实体类 (13 个)
-│   ├── Agent                       ├── AgentDatasource
-│   ├── AgentKnowledge              ├── ChatSession / ChatMessage
-│   ├── Datasource                  ├── SemanticModel
-│   ├── BusinessKnowledge           ├── ModelConfig
-│   ├── LogicalRelation             └── ...
-│
-├── mapper/                         # MyBatis Mapper (14 个)
-│
-├── dto/                            # 数据传输对象
-├── vo/                             # 视图对象 (ApiResponse、PageResponse 等)
-├── bo/                             # 业务对象 (SchemaInfo、ColumnInfo 等)
-├── enums/                          # 枚举 (10 个: DatabaseDialect、KnowledgeType、ErrorCode 等)
-│
-├── config/                         # 配置类 (7 个)
-│   ├── DataAgentConfiguration      # 核心配置: 异步、向量存储、文本分割器、模型代理
-│   ├── DatasourceConfig            # 双数据源配置 (业务DB + PGVector DB)
-│   ├── OpenTelemetryConfig         # OTLP/Langfuse 可观测
-│   ├── McpServerConfig             # MCP Server 工具注册
-│   ├── OpenApiConfig               # Swagger/OpenAPI
-│   ├── WebConfig                   # 静态资源映射
-│   └── AgentScopeTracingConfiguration
-│
-├── properties/                     # @ConfigurationProperties (8 个)
-│   ├── DataAgentProperties         # 核心配置 (spring.ai.alibaba.data-agent.*)
-│   ├── FileStorageProperties       # 文件存储
-│   ├── CodeExecutorProperties      # Python 代码执行
-│   ├── AgentSkillProperties        # Agent 技能
-│   ├── PgVectorDatasourceProperties # PGVector 数据源
-│   ├── MetricCapabilityProperties  # 指标系统能力
-│   ├── OssStorageProperties        # OSS 存储
-│   └── AgentScopeObservabilityProperties
-│
-├── connector/                      # 多数据库连接器抽象
-│   ├── accessor/                   # 数据访问器工厂 (7 种数据库)
-│   ├── ddl/                        # DDL 工厂
-│   ├── impls/                      # 具体实现 (mysql/h2/postgre/oracle/sqlserver/hive/dameng)
-│   ├── pool/                       # 连接池管理
-│   ├── SqlExecutor.java
-│   └── ResultSetBuilder.java
-│
-├── prompt/                         # Prompt 模板加载
-├── event/                          # 事件 (Agent知识变更)
-├── exception/                      # 异常定义 (InternalServerException、InvalidInputException)
-├── constant/                       # 常量
-├── annotation/                     # 自定义注解 (@InEnum、@McpServerTool)
-├── converter/                      # 对象转换器
-├── observability/                  # 会话追踪存储
-├── splitter/                       # 文本分割器 (段落/语义/句子)
-├── strategy/                       # Token 计数、批处理策略
-├── capability/                     # 插件式能力路由 (指标系统)
-│   └── metric/                     # 指标系统能力实现
-│
-└── util/                           # 工具类 (12 个)
-    ├── SqlUtil                     ├── JsonUtil
-    ├── ChatResponseUtil            ├── MarkdownParserUtil
-    ├── DocumentConverterUtil       ├── ApiKeyUtil
-    ├── McpServerToolUtil           └── ...
+仓库由两个应用模块组成：
+
+```text
+DataAgent
+├── data-agent-management   # Spring Boot 后端，也是 Maven 可执行模块
+├── data-agent-frontend     # Vue 3 前端，不属于 Maven reactor
+├── agent-skills            # 运行时技能定义
+└── docs                    # 架构、开发、状态和经验文档
 ```
 
-## 核心架构设计
+后端没有拆成多个部署服务；Controller、Service、Mapper、AgentScope 适配和工具提供者都位于 `data-agent-management` 内。
 
-### NL2SQL 分析工作流 (StateGraph)
+## 3. 当前运行时主链路
 
-系统基于 **LangGraph 风格的 StateGraph** 实现端到端的自然语言数据分析流水线：
-
-```
-用户输入 → 意图识别 → 证据召回 → 查询增强 → Schema 召回 → 表关系分析
-       → 可行性评估 → 计划生成 → (可选: 人工审核) → SQL 生成 → SQL 执行
-       → Python 代码生成 → Python 执行 → 分析报告生成 → SSE 流式输出
-```
-
-### 数据存储设计
-
-| 用途 | 数据库 | 说明 |
-|------|--------|------|
-| **业务数据** | MySQL (Druid) | Agent 配置、知识库、对话记录、数据源元信息 |
-| **向量存储** | PostgreSQL + PGVector (HikariCP) | 知识文档向量化，维度 1024，余弦距离 |
-| **数据源** | MySQL / PostgreSQL / Oracle / SQL Server / Hive / Dameng / H2 | Agent 分析对象的业务数据库 |
-| **文件存储** | 本地磁盘 / 阿里云 OSS | 知识文件、Excel 模板、上传文件 |
-
-### 数据库表 (12 张)
-
-`agent`, `datasource`, `agent_datasource`, `agent_datasource_tables`, `agent_datasource_columns`, `semantic_model`, `logical_relation`, `business_knowledge`, `agent_knowledge`, `agent_skill_binding`, `chat_session`, `chat_message`, `agent_preset_question`, `model_config`
-
-## 关键配置项
-
-| 配置 key | 默认值 | 说明 |
-|----------|--------|------|
-| `server.port` | 8065 | 后端端口 |
-| `DATA_AGENT_DATASOURCE_URL` | `jdbc:mysql://127.0.0.1:3360/feat-agentscope` | 业务数据库 |
-| `DATA_AGENT_VECTORSTORE_URL` | `jdbc:postgresql://localhost:5432/vector_db_feat` | 向量库 |
-| `spring.ai.alibaba.data-agent.vector-store.table-topk-limit` | 10 | 表召回数量 |
-| `spring.ai.alibaba.data-agent.vector-store.table-similarity-threshold` | 0.2 | 表相似度阈值 |
-| `spring.ai.alibaba.data-agent.vector-store.default-topk-limit` | 8 | 默认召回数量 |
-| `spring.ai.alibaba.data-agent.vector-store.default-similarity-threshold` | 0.4 | 默认相似度阈值 |
-| `spring.ai.alibaba.data-agent.llm-service-type` | stream | LLM 调用方式 |
-| `spring.ai.alibaba.data-agent.code-executor.code-pool-executor` | local | Python 执行环境 |
-| `spring.ai.alibaba.data-agent.max-sql-retry-count` | 10 | SQL 最大重试次数 |
-| `spring.ai.alibaba.data-agent.capabilities.metric-system.enabled` | true | 指标能力开关 |
-
-## 环境要求
-
-- JDK 17+
-- MySQL 8.0+
-- PostgreSQL 14+ (含 PGVector 插件)
-- (可选) Elasticsearch 8.x
-- (可选) Docker (用于 Python 沙箱执行)
-- Maven 3.x / Make
-- Node.js 18+ (前端)
-
-## 启动方式
-
-```bash
-# 一键启动所有依赖 (MySQL, PostgreSQL) + 后端 + 前端
-make start
-
-# 仅启动后端
-cd data-agent-management && mvn spring-boot:run
-
-# 仅启动前端
-cd data-agent-frontend && npm install && npm run dev
+```mermaid
+flowchart LR
+    UI["Vue 对话页"] -->|"SSE 请求"| API["DataAgentController"]
+    API --> Runtime["AiAgentRuntimeServiceImpl"]
+    Runtime --> Clarify["QueryClarifyService"]
+    Runtime --> Route["CapabilityRoutingService"]
+    Route --> Catalog["AgentScopeToolkitFactory / 动态工具目录"]
+    Runtime --> Model["DynamicModelFactory"]
+    Runtime --> Registry["ManagedAgentRegistry"]
+    Registry --> Common["CommonAgent"]
+    Common --> ReAct["AgentScope ReActAgent"]
+    Catalog --> ReAct
+    Model --> ReAct
+    ReAct --> Hooks["Hook / AgentRuntimeEventPublisher"]
+    Hooks -->|"SSE 事件"| UI
+    ReAct --> Memory["AgentScope Memory / MySQL Session"]
 ```
 
-## 相关文档
+主要步骤如下：
 
-- `docs/QUICK_START.md` — 快速开始
-- `docs/DEVELOPER_GUIDE.md` — 开发者指南
-- `docs/ADVANCED_FEATURES.md` — 高级特性 (MCP Server、API 调用)
-- `docs/KNOWLEDGE_USAGE.md` — 知识库使用指南
+1. `DataAgentController` 接收问题、`agentId`、`threadId`、运行请求标识和可选人工反馈。
+2. `AiAgentRuntimeServiceImpl` 检查取消状态和澄清条件，加载 Agent、活动模型和 AgentScope memory。
+3. `AgentScopeToolkitFactory` 按 Agent 绑定的数据源、技能和知识构建基础工具集。
+4. `CapabilityRoutingService` 选择数据库路径或指标混合路径，并追加对应工具和运行时规则。
+5. `ManagedAgentRegistry` 固定取得 `CommonAgent`；`CommonAgent` 创建 AgentScope `ReActAgent`，由模型自主循环选择工具。
+6. Hook 将文本、工具调用、工具结果和错误转换为 SSE 事件；运行结束后保存原生 memory 和可观测信息。
+
+当前主链路不是固定节点图，也不存在“意图识别节点 → 计划节点 → SQL 节点 → Python 节点 → 报告节点”的强制顺序。工具调用次序由 `ReActAgent`、系统提示词、能力路由规则和工具返回共同决定。
+
+## 4. Agent、Prompt 与能力路由
+
+- 业务落库和运行时只使用 `agentType=commonagent`。
+- Agent 基础提示词来自 `prompts/commonagent.md`，数据库路径规则来自 `prompts/db-path.md`。
+- 业务侧 Prompt 语义收敛为系统提示词，不再按旧 StateGraph 节点维护多种 Prompt 模板。
+- 指标能力启用时，路由会注册 `metric.*` 工具；数据库工具仍保留作为明确的降级路径。
+- Agent 绑定的本地技能、领域知识、语义模型、数据源探索和 SQL 安全工具都通过动态工具目录注入。
+
+## 5. 流式、会话与持久化
+
+- 前端流式请求默认以当前 `sessionId` 作为 `threadId`。
+- AgentScope 原生 memory 与 UI 可见聊天消息是两类数据；`memory-text` 只进入 memory，不直接出现在聊天消息列表。
+- 当前 UI 可见消息仍由前端在流式过程中调用聊天接口保存，因此断连时可能出现运行时已执行但历史消息不完整的情况；后端统一拥有一次对话持久化属于后续整改项 `R-11`。
+- 取消流程由 `runtimeRequestId` 和运行时注册表协作，既停止 SSE，也抑制取消后的 memory 写回。
+
+## 6. 数据与检索
+
+### 6.1 管理库
+
+MySQL 基线共 14 张表：
+
+`agent`, `business_knowledge`, `semantic_model`, `agent_knowledge`, `datasource`, `logical_relation`, `agent_datasource`, `agent_preset_question`, `agent_skill_binding`, `chat_session`, `chat_message`, `agent_datasource_tables`, `agent_datasource_columns`, `model_config`。
+
+主基线和测试基线必须同步维护：
+
+- `data-agent-management/src/main/resources/sql/schema.sql`
+- `data-agent-management/src/test/resources/sql/schema.sql`
+
+应用默认不在启动时执行 migration；旧数据库结构需要按升级说明手工对齐。
+
+### 6.2 向量检索
+
+当前 `application.yml` 默认配置 `spring.ai.vectorstore.type=elasticsearch`，索引维度为 1024，并启用向量与关键词双路召回后的融合。PGVector starter 和示例配置仍保留，作为可选切换方案，不是当前默认运行后端。
+
+### 6.3 业务数据源
+
+Agent 可连接 MySQL、PostgreSQL、Oracle、SQL Server、Hive、Dameng 和 H2 等业务库。数据源绑定可进一步限制允许访问的表和字段；生成 SQL 在执行前必须经过 AST 校验和 `sql_guard.check`。
+
+## 7. 关键配置
+
+| 配置 | 默认/说明 |
+|---|---|
+| `server.port` | `8065` |
+| `DATA_AGENT_DATASOURCE_URL` | 管理库连接地址 |
+| `DATA_AGENT_DATASOURCE_USERNAME` | 管理库用户名，默认 `root` |
+| `DATA_AGENT_DATASOURCE_PASSWORD` | 必须通过环境提供；仓库不保存真实默认口令 |
+| `spring.ai.vectorstore.type` | 当前为 `elasticsearch` |
+| `spring.ai.vectorstore.elasticsearch.dimensions` | `1024` |
+| `spring.ai.alibaba.data-agent.vector-store.enable-hybrid-search` | `true` |
+| `spring.ai.alibaba.data-agent.capabilities.metric-system.enabled` | `true` |
+| `spring.ai.alibaba.data-agent.agentscope.observability.enabled` | `true` |
+
+## 8. 当前架构边界
+
+- Web 层使用 WebFlux，但 MyBatis、JDBC 和部分 AgentScope 调用是阻塞式；当前低并发模块可运行，若出现明确吞吐问题再评估统一为 MVC + SSE 或系统隔离阻塞调用。
+- 当前没有完整访问控制，不能直接作为公网或不可信共享网络服务部署。
+- 模型配置和数据源配置的落库加密属于后续整改项；普通管理接口不得返回明文密钥。
+
+## 9. 相关文档
+
+- `docs/todolist.md`：当前整改路线图
+- `docs/DEVELOPER_GUIDE.md`：开发与验证方式
+- `docs/ELASTICSEARCH.md`：Elasticsearch 配置和排障
+- `docs/KNOWLEDGE_USAGE.md`：语义模型和知识配置
+- `docs/LESSONS.md`：历史问题、根因和可复用经验

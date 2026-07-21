@@ -38,7 +38,7 @@ interface UpdateDatasourceColumnsDto {
   tables?: TableColumnsSelectionDto[];
 }
 
-const BASE_URL_FUNC = (agentId: string) => `/api/agent/${agentId}/datasources`;
+const BASE_URL_FUNC = (agentId: number) => `/api/agent/${agentId}/datasources`;
 
 const extractApiErrorMessage = (error: unknown, fallback: string): string => {
   if (axios.isAxiosError(error)) {
@@ -57,7 +57,7 @@ const extractApiErrorMessage = (error: unknown, fallback: string): string => {
 };
 
 class AgentDatasourceService {
-  async initSchema(agentId: string): Promise<ApiResponse<null>> {
+  async initSchema(agentId: number): Promise<ApiResponse<null>> {
     try {
       const response = await axios.post<ApiResponse<null>>(`${BASE_URL_FUNC(agentId)}/init`);
       return response.data;
@@ -69,7 +69,7 @@ class AgentDatasourceService {
   async getAgentDatasource(agentId: number): Promise<AgentDatasource[]> {
     try {
       const response = await axios.get<ApiResponse<AgentDatasource[]>>(
-        BASE_URL_FUNC(String(agentId)),
+        BASE_URL_FUNC(agentId),
       );
       if (response.data.success) {
         return response.data.data || [];
@@ -83,7 +83,7 @@ class AgentDatasourceService {
   async getActiveAgentDatasource(agentId: number): Promise<AgentDatasource> {
     try {
       const response = await axios.get<ApiResponse<AgentDatasource>>(
-        `${BASE_URL_FUNC(String(agentId))}/active`,
+        `${BASE_URL_FUNC(agentId)}/active`,
       );
       if (response.data.success && response.data.data) {
         return response.data.data;
@@ -95,7 +95,7 @@ class AgentDatasourceService {
   }
 
   async addDatasourceToAgent(
-    agentId: string,
+    agentId: number,
     datasourceId: number,
   ): Promise<ApiResponse<AgentDatasource>> {
     try {
@@ -109,7 +109,7 @@ class AgentDatasourceService {
   }
 
   async removeDatasourceFromAgent(
-    agentId: string,
+    agentId: number,
     datasourceId: number,
   ): Promise<ApiResponse<null>> {
     try {
@@ -123,7 +123,7 @@ class AgentDatasourceService {
   }
 
   async toggleDatasourceForAgent(
-    agentId: string,
+    agentId: number,
     dto: ToggleDatasourceDto,
   ): Promise<ApiResponse<AgentDatasource>> {
     try {
@@ -138,7 +138,7 @@ class AgentDatasourceService {
   }
 
   async updateDatasourceTables(
-    agentId: string,
+    agentId: number,
     dto: UpdateDatasourceTablesDto,
   ): Promise<ApiResponse<AgentDatasource>> {
     try {
@@ -153,7 +153,7 @@ class AgentDatasourceService {
   }
 
   async updateDatasourceColumns(
-    agentId: string,
+    agentId: number,
     dto: UpdateDatasourceColumnsDto,
   ): Promise<ApiResponse<AgentDatasource>> {
     try {
@@ -168,7 +168,7 @@ class AgentDatasourceService {
   }
 
   async getVisibleTableColumns(
-    agentId: string,
+    agentId: number,
     datasourceId: number,
     tableName: string,
   ): Promise<string[]> {

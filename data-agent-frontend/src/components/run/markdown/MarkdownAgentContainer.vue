@@ -16,7 +16,7 @@
 
 <template>
   <div class="markdown-container">
-    <div class="markdown-content" ref="markdown-agent-container" @click="hdlClick" />
+    <div class="markdown-content" ref="markdown-agent-container" />
   </div>
 </template>
 
@@ -35,7 +35,7 @@
     func: T,
     wait: number,
   ): (...args: Parameters<T>) => void {
-    let timeout: NodeJS.Timeout | null = null;
+    let timeout: ReturnType<typeof setTimeout> | null = null;
     return function executedFunction(...args: Parameters<T>) {
       const later = () => {
         if (timeout) {
@@ -94,7 +94,7 @@
     data() {
       const optMarkdownIt = this.options.markdownIt;
 
-      const md = new MarkdownIt(optMarkdownIt)
+      const md = new MarkdownIt(optMarkdownIt || {})
         .use(MarkdownPluginHighlight)
         .use(MarkdownPluginEcharts)
         .use(MarkdownItContainer);
@@ -112,6 +112,9 @@
         // render echarts - 只有当内容完整时才渲染
         const echartsElements = document.querySelectorAll('.md-echarts');
         echartsElements.forEach(element => {
+          if (!(element instanceof HTMLElement)) {
+            return;
+          }
           try {
             const content = element.textContent;
             if (!content || content.trim() === '') {

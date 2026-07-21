@@ -18,6 +18,7 @@ package com.alibaba.cloud.ai.dataagent.converter;
 import com.alibaba.cloud.ai.dataagent.dto.ModelConfigDTO;
 import com.alibaba.cloud.ai.dataagent.entity.ModelConfig;
 import com.alibaba.cloud.ai.dataagent.enums.ModelType;
+import com.alibaba.cloud.ai.dataagent.util.SensitiveValueUtil;
 import org.springframework.util.Assert;
 
 import java.time.LocalDateTime;
@@ -28,6 +29,17 @@ public class ModelConfigConverter {
 	 * Entity -> DTO 用于把数据库数据转给前端看
 	 */
 	public static ModelConfigDTO toDTO(ModelConfig entity) {
+		return toDTO(entity, false);
+	}
+
+	/**
+	 * Entity -> DTO for management APIs. Secret values are placeholders only.
+	 */
+	public static ModelConfigDTO toMaskedDTO(ModelConfig entity) {
+		return toDTO(entity, true);
+	}
+
+	private static ModelConfigDTO toDTO(ModelConfig entity, boolean maskSecrets) {
 		if (entity == null) {
 			return null;
 		}
@@ -39,7 +51,7 @@ public class ModelConfigConverter {
 			.temperature(entity.getTemperature())
 			.maxTokens(entity.getMaxTokens())
 			.isActive(entity.getIsActive())
-			.apiKey(entity.getApiKey())
+			.apiKey(maskSecrets ? SensitiveValueUtil.masked(entity.getApiKey()) : entity.getApiKey())
 			.modelType(entity.getModelType().getCode())
 			.completionsPath(entity.getCompletionsPath())
 			.embeddingsPath(entity.getEmbeddingsPath())
@@ -47,7 +59,7 @@ public class ModelConfigConverter {
 			.proxyHost(entity.getProxyHost())
 			.proxyPort(entity.getProxyPort())
 			.proxyUsername(entity.getProxyUsername())
-			.proxyPassword(entity.getProxyPassword())
+			.proxyPassword(maskSecrets ? SensitiveValueUtil.masked(entity.getProxyPassword()) : entity.getProxyPassword())
 			.build();
 	}
 

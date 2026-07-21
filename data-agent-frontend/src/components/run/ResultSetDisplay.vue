@@ -33,8 +33,8 @@
   const isChartView = ref(true);
 
   // 判断是否显示图表
-  const showChart = computed(() => {
-    return (
+  const showChart = computed<boolean>(() => {
+    return Boolean(
       props.resultData &&
       props.resultData.displayStyle?.type &&
       props.resultData.displayStyle?.type !== 'table'

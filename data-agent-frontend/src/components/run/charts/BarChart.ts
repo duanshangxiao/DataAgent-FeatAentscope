@@ -44,9 +44,9 @@ export class BarChart extends BaseChart {
 
     const xAxisData = this.data.map(item => item[xAxis.value]);
     const colors: string[] = generateUniqueColors(yAxes.length);
-    const seriesData = yAxes.map((yAxis, index) => ({
+    const seriesData: echarts.BarSeriesOption[] = yAxes.map((yAxis, index) => ({
       name: yAxis.name,
-      type: 'bar',
+      type: 'bar' as const,
       data: this.data.map(item => {
         const value = item[yAxis.value];
         return isNaN(Number(value)) ? value : Number(value);

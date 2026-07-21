@@ -200,8 +200,8 @@
 
           <el-form-item label="模型类型" prop="modelType">
             <el-radio-group v-model="formData.modelType">
-              <el-radio label="CHAT">对话模型</el-radio>
-              <el-radio label="EMBEDDING">嵌入模型</el-radio>
+              <el-radio value="CHAT">对话模型</el-radio>
+              <el-radio value="EMBEDDING">嵌入模型</el-radio>
             </el-radio-group>
           </el-form-item>
 
@@ -217,7 +217,7 @@
               v-model="formData.apiKey"
               type="password"
               show-password
-              :placeholder="formData.provider === 'custom' ? '可选填' : '请输入API密钥'"
+              :placeholder="isEditMode ? '留空或保持掩码表示不修改' : formData.provider === 'custom' ? '可选填' : '请输入API密钥'"
             />
           </el-form-item>
 
@@ -314,7 +314,7 @@
                 v-model="formData.proxyPassword"
                 type="password"
                 show-password
-                placeholder="可选"
+                :placeholder="isEditMode ? '留空或保持掩码表示不修改' : '可选'"
               />
             </el-form-item>
           </div>

@@ -18,19 +18,19 @@ import axios from 'axios';
 import { ApiResponse } from './common';
 
 export interface Agent {
-  id?: number;
-  name?: string;
-  description?: string;
+  id: number;
+  name: string;
+  description: string;
   avatar?: string;
-  status?: string;
+  status: string;
   apiKey?: string | null;
   apiKeyEnabled?: number | boolean;
   prompt?: string;
   category?: string;
   adminId?: number;
   tags?: string;
-  createTime?: Date;
-  updateTime?: Date;
+  createTime?: string;
+  updateTime?: string;
   humanReviewEnabled?: number | boolean; // 0 or 1, default is 0
 }
 

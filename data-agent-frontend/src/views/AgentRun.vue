@@ -146,7 +146,10 @@
                 <span>智能体正在处理中...</span>
               </div>
               <div class="agent-response-container">
-                <template v-for="(nodeBlock, index) in nodeBlocks" :key="index">
+                <template
+                  v-for="nodeBlock in nodeBlocks"
+                  :key="`${nodeBlock[0]?.nodeName}:${nodeBlock[0]?.textType}:${nodeBlock[0]?.text?.slice(0, 24)}`"
+                >
                   <!-- 如果是 Markdown 报告节点，使用 Markdown 或 HTML 组件 -->
                   <div
                     v-if="
@@ -295,20 +298,20 @@
               </div>
             </div>
           </div>
-          <div v-if="false" class="clarify-banner">
+          <div v-if="pendingClarify && false" class="clarify-banner">
             <div class="clarify-banner-header">
               <span class="clarify-banner-title">需要先澄清后再查库</span>
-              <span class="clarify-banner-risk">riskLevel={{ pendingClarify.riskLevel }}</span>
+              <span class="clarify-banner-risk">riskLevel={{ pendingClarify?.riskLevel }}</span>
             </div>
             <div class="clarify-banner-body">
               {{
-                pendingClarify.summary ||
+                pendingClarify?.summary ||
                 '当前问题存在高歧义，下一条输入将作为补充信息或显式假设回填。'
               }}
             </div>
-            <div v-if="pendingClarify.missingDimensions.length > 0" class="clarify-banner-tags">
+            <div v-if="(pendingClarify?.missingDimensions || []).length > 0" class="clarify-banner-tags">
               <el-tag
-                v-for="dimension in pendingClarify.missingDimensions"
+                v-for="dimension in pendingClarify?.missingDimensions || []"
                 :key="dimension"
                 size="small"
                 effect="plain"
@@ -317,11 +320,11 @@
               </el-tag>
             </div>
             <div
-              v-if="pendingClarify.suggestedAssumptions.length > 0"
+              v-if="(pendingClarify?.suggestedAssumptions || []).length > 0"
               class="clarify-banner-assumptions"
             >
               <el-button
-                v-for="assumption in pendingClarify.suggestedAssumptions"
+                v-for="assumption in pendingClarify?.suggestedAssumptions || []"
                 :key="assumption"
                 size="small"
                 text
@@ -1069,8 +1072,12 @@
     },
     created() {
       window.copyTextToClipboard = btn => {
-        const text = btn.previousElementSibling.textContent;
-        const originalText = btn.textContent;
+        const text = btn.previousElementSibling?.textContent || '';
+        const originalText = btn.textContent || '复制';
+
+		if (!text) {
+			return;
+		}
 
         navigator.clipboard
           .writeText(text)
@@ -1345,7 +1352,7 @@
 
         isSubmittingMessage.value = true;
         const needsTitle = !currentSession.value?.title || currentSession.value.title === '新会话';
-        const activeClarify: PendingClarifyState | null = null;
+        const activeClarify: PendingClarifyState | null = pendingClarify.value;
         const requestQuery = activeClarify?.originalQuery ?? userInput.value.trim();
         const userMessage: ChatMessage = {
           sessionId: currentSession.value.id,
@@ -1516,7 +1523,7 @@
 
           const closeStream = await GraphService.streamSearch(
             request,
-            (response: AgentResponse) => {
+            async (response: AgentResponse) => {
               if (response.error) {
                 ElMessage.error(`处理错误: ${response.text}`);
                 return;
@@ -1560,7 +1567,7 @@
                   sessionState.htmlReportSize = sessionState.htmlReportContent.length;
 
                   // 更新显示：当前已经收集了多少字节的报告
-                  const reportNode: AgentResponse[] = sessionState.nodeBlocks.find(
+                  const reportNode: AgentResponse[] | undefined = sessionState.nodeBlocks.find(
                     (block: AgentResponse[]) =>
                       block.length > 0 &&
                       block[0].nodeName === 'ReportGeneratorNode' &&
@@ -1580,7 +1587,7 @@
                 // 处理Markdown报告
                 else if (response.textType === 'MARK_DOWN') {
                   sessionState.markdownReportContent += response.text;
-                  const reportNode: AgentResponse[] = sessionState.nodeBlocks.find(
+                  const reportNode: AgentResponse[] | undefined = sessionState.nodeBlocks.find(
                     (block: AgentResponse[]) =>
                       block.length > 0 &&
                       block[0].nodeName === 'ReportGeneratorNode' &&
@@ -1985,7 +1992,8 @@
               // 如果type不是table，不生成HTML，由模板中的ResultSetDisplay组件处理
             } catch (error) {
               console.error('解析结果集JSON失败:', error);
-              content += `<div class="result-set-error">解析结果集数据失败: ${error.message}</div>`;
+              const errorMessage = error instanceof Error ? error.message : '未知错误';
+              content += `<div class="result-set-error">解析结果集数据失败: ${errorMessage}</div>`;
             }
           } else {
             console.warn(`不支持的 textType: ${node[idx].textType}`);
