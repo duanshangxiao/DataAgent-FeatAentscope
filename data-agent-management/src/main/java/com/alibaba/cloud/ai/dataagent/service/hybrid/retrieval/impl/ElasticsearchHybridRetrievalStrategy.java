@@ -138,7 +138,7 @@ public class ElasticsearchHybridRetrievalStrategy extends AbstractHybridRetrieva
 		return SearchRequest.of(s -> s.index(indexName)
 			.query(finalQuery)
 			.size(topK) // 注意：这里用了传入的 topK
-			.minScore(minScore) // 如果 minScore 为 null，ES 会忽略此参数
+			.minScore(minScore != null && minScore > 0 ? minScore : null)
 			.source(src -> src.fetch(true)) // 确保返回 _source
 		);
 	}

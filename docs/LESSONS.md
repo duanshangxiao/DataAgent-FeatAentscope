@@ -214,6 +214,27 @@
   验证清单：标题颜色/背景是否冲突、暗色模式下文字可见性、表单元素是否 disabled、CSS 变量是否实际解析
 - **教训**：[CHECKPOINT] 任何前端 CSS/渲染改动，除了 `npm run build`，必须至少额外完成：① 切换到目标页面 URL（`set URL of active tab`）；② 通过 JS 读取目标元素的计算样式（`getComputedStyle`），验证 `color`/`backgroundColor` 对比度；③ 检查交互状态（`disabled`/`checked` 等）。静态代码审查不能替代运行时 DOM 验证。
 
+---
+
+## 2026-07-20: 指标召回率为 0 — ES 混合检索导致中文指标完全无法命中
+
+- **现象**：指标管理页面有"日活跃用户数趋势查询"指标，但用"查询近一个月的日活跃用户趋势"提问，`metric.catalog.search` 返回 0 个候选。
+- **根因（4 层）**：
+  1. **文档 Schema 缺陷**：`convertMetricToDocument()` 只把 `metricCode + metricName + summary + aliases` 写入 content，语义最丰富的 `description`、`tags`、`requestParameters` 只存在 metadata 不参与向量化，文档嵌入信号严重不足
+  2. **ES 无中文分词**：8.18.0 裸镜像使用 `standard` 分词器，中文单字 token 导致 BM25 得分低到 `minScore=0.5` 全部过滤，关键词路径形同虚设（混合检索退化为纯向量）
+  3. **minScore 跨域不可比**：0.5 是 BM25 得分域，向量路径是 cosine 得分域(0.4)，量纲不同却各自设独立阈值导致关键词路径被"自裁"
+  4. **Spring AI ES 维度推断依赖代理 Bean**：`EmbeddingModel` 是运行时动态代理，启动时无法返回 `dimensions()`，Spring AI 默认 1536，但 `text-embedding-v4` 实际输出 1024 维，写入时报 `different number of dimensions`
+- **修复**：
+  1. `convertMetricToDocument()` 按「语义字段→content，技术标识→metadata」规则系统化重写，新增 `description`、`tags`、`requestParameters(name+description)`、`supportedGranularities` 进入 content
+  2. 安装 `analysis-ik` 插件（*非 smartcn，因 IK 支持自定义词典可收敛业务术语*），`content` 字段用 `ik_max_word`（索引端细粒度）+ `ik_smart`（搜索端粗粒度），通过 index template 生效
+  3. `elasticsearchMinScore` 从 0.5→0.0，改为 ES 层不做分数截断由 RRF 统一排序
+  4. `application.yml` 显式配置 `dimensions: 1024`
+- **教训**：
+  1. [AGENT RULE] 向量文档的 `content` 字段构建必须遵循「语义描述→content、技术标识→metadata」的规则，不能随意挑字段白名单。处理新实体类型时先定义规则再实现，避免经验主义遗漏
+  2. [CHECKPOINT] 切换向量后端（PGVector→ES）时，必须同步验证 ES 特有配置项：① 中文分词插件；② 索引模板/Mapping（content 字段使用的 analyzer）；③ `dimensions` 显式指定（当 EmbeddingModel 是代理无法在启动时提供维度时）；④ minScore 阈值是否与融合策略对齐
+
+---
+
 ## 模板
 
 ```markdown

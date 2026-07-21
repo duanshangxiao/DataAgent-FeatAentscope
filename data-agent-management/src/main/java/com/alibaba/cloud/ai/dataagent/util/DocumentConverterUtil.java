@@ -131,11 +131,29 @@ public class DocumentConverterUtil {
 		StringBuilder content = new StringBuilder();
 		content.append(definition.metricCode()).append(" ");
 		content.append(definition.metricName()).append(" ");
-		if (definition.summary() != null) {
+		if (StringUtils.isNotEmpty(definition.summary())) {
 			content.append(definition.summary()).append(" ");
 		}
 		if (definition.aliases() != null && !definition.aliases().isEmpty()) {
-			content.append(String.join(" ", definition.aliases()));
+			content.append(String.join(" ", definition.aliases())).append(" ");
+		}
+		if (StringUtils.isNotEmpty(definition.description())) {
+			content.append(definition.description()).append(" ");
+		}
+		if (definition.tags() != null && !definition.tags().isEmpty()) {
+			content.append(String.join(" ", definition.tags())).append(" ");
+		}
+		List<MetricApiParameter> params = definition.requestParameters();
+		if (params != null && !params.isEmpty()) {
+			for (MetricApiParameter p : params) {
+				content.append(p.name()).append(" ");
+				if (StringUtils.isNotEmpty(p.description())) {
+					content.append(p.description()).append(" ");
+				}
+			}
+		}
+		if (definition.supportedGranularities() != null && !definition.supportedGranularities().isEmpty()) {
+			content.append(String.join(" ", definition.supportedGranularities())).append(" ");
 		}
 		Map<String, Object> metadata = new HashMap<>();
 		metadata.put(DocumentMetadataConstant.VECTOR_TYPE, DocumentMetadataConstant.METRIC);
@@ -145,7 +163,6 @@ public class DocumentConverterUtil {
 		metadata.put("description", definition.description() != null ? definition.description() : "");
 		metadata.put("httpMethod", definition.httpMethod());
 		metadata.put("path", definition.path());
-		List<MetricApiParameter> params = definition.requestParameters();
 		if (params != null && !params.isEmpty()) {
 			List<String> paramNames = new java.util.ArrayList<>();
 			for (MetricApiParameter p : params) {

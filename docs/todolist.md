@@ -18,6 +18,7 @@
 | 2026-07-20 | 修复暗色模式下页面标题不可见 + 标题区域样式 | AgentDetail 页 el-header/el-aside/el-main 硬编码 background-color: white 在暗色模式下与继承的白色文字(id=color var(--text-primary))冲突，白底白字完全不可见；修复方案：三处行内 white 改为 CSS 类 detail-panel，显式设置 color 以对抗暗色模式文字继承；AgentList 页 .content-header 添加白色卡片样式(背景/边框/阴影)；index.html 去掉泛型 <title> 占位符 |
 | 2026-07-20 | 技能配置与能力路由解耦优化 | 修复静默降级：用户选「指标查询」但技能未绑定时，后端不再静默回退 DB_ONLY，改为注入降级告知提示给 LLM；前端对话页「指标查询」radio 未绑技能时灰显 + tooltip 提示；精简 builtin-metric-system/SKILL.md 去除与 buildRuntimeInstructions 重复的行为指令 |
 | 2026-07-20 | Prompt 架构重构 — 路径专用规则从基础 Prompt 分离 | commonagent.md 精简为通用规则(Human review directive)；DB 工具链 50+ 行规则移至新文件 prompts/db-path.md；CapabilityRoutingService.buildRuntimeInstructions() 按路由类型注入对应路径 Prompt：指标可用时注入指标规则+DB 回退规则，指标不可用时注入 DB_PATH_PROMPT；移除"覆盖默认路由规则"措辞（已无默认规则可覆盖） |
+| 2026-07-20 | 指标召回修复 — 向量文档 Schema 系统性设计 + ES IK 分词 | Metric 文档 content 从 4 字段扩为 8 维度(description/tags/requestParameters/supportedGranularities 加入)；ES 安装 IK 分析器(content 字段 ik_max_word 索+ik_smart 检)；ES minScore 0.5→0.0 改由 RRF 统一排序；修复 Spring AI ES 维度自动推断失败(显式配置 dimensions:1024) |
 
 ---
 

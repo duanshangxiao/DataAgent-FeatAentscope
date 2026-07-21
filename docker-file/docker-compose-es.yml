@@ -54,6 +54,8 @@ services:
       - /Users/dsx/devTools/elasticsearch/8180/logs:/usr/share/elasticsearch/logs
       # 快照备份目录 (配合 snapshot lifecycle 使用)
       - /Users/dsx/devTools/elasticsearch/8180/snapshots:/usr/share/elasticsearch/snapshots
+      # IK 中文分词插件
+      - /Users/dsx/devTools/elasticsearch/8180/plugins/analysis-ik:/usr/share/elasticsearch/plugins/analysis-ik
 
     ports:
       - "9200:9200"   # HTTP API

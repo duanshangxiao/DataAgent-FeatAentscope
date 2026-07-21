@@ -286,9 +286,10 @@ public class DataAgentProperties {
 		private boolean enableHybridSearch = false;
 
 		/**
-		 * Elasticsearch最小分数阈值，用于es执行关键词搜索时过滤相关性较低的文档
+		 * Elasticsearch最小分数阈值，用于es执行关键词搜索时过滤相关性较低的文档。
+		 * 0 表示不做分数截断，由 RRF 融合统一排序。
 		 */
-		private double elasticsearchMinScore = 0.5;
+		private double elasticsearchMinScore = 0.0;
 
 		/**
 		 * SimpleVectorStore本地序列化文件地址

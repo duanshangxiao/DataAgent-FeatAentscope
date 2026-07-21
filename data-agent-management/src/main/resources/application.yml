@@ -41,6 +41,7 @@ spring:
       elasticsearch:
         index-name: spring-ai-document-index
         initialize-schema: true
+        dimensions: 1024
 
     alibaba:
       data-agent:
