@@ -98,7 +98,7 @@
 - **修复**：
   1. `MetricCapabilityProvider` 删除对 `MetricOpenApiSyncService`（基础设施层）的注入，改用轻量 `MetricCapabilityStatus`
   2. `@Scheduled` SpEL 从 `#{@self}` 改为 `${property:default}000` 属性占位符
-- **教训**：[已写入 AGENT.md §6] 修改 Bean 注入/构造器/依赖关系/`@Scheduled`/`@Async`/`@Configuration` 后必须执行 `mvn spring-boot:run` 启动验证，不能在 `compile` 通过后就认为完成
+- **教训**：[已写入 AGENTS.md §4] 修改 Bean 注入/构造器/依赖关系/`@Scheduled`/`@Async`/`@Configuration` 后必须执行应用启动验证，不能在 `compile` 通过后就认为完成
 
 ---
 
