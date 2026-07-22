@@ -58,18 +58,18 @@ class MetricOpenApiParser implements MetricMetadataParser {
 	}
 
 	@Override
-	public List<MetricDefinition> parse(String rawDocument) {
+	public ParsedMetricCatalog parse(String rawDocument) {
 		try {
 			com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(rawDocument);
 			return doParse(root);
 		}
 		catch (Exception ex) {
 			log.warn("Failed to parse metric OpenAPI document.", ex);
-			return List.of();
+			return ParsedMetricCatalog.empty();
 		}
 	}
 
-	public List<MetricDefinition> parse(JsonNode root) {
+	public ParsedMetricCatalog parse(JsonNode root) {
 		try {
 			return doParse(root);
 		}
@@ -78,12 +78,12 @@ class MetricOpenApiParser implements MetricMetadataParser {
 		}
 	}
 
-	private List<MetricDefinition> doParse(JsonNode root) {
+	private ParsedMetricCatalog doParse(JsonNode root) {
 		if (root == null || root.isMissingNode() || root.path("paths").isMissingNode()) {
 			log.warn("Metric OpenAPI parse skipped because paths node is missing.");
-			return List.of();
+			return ParsedMetricCatalog.empty();
 		}
-		List<MetricDefinition> definitions = new ArrayList<>();
+		List<MetricCatalogEntry> entries = new ArrayList<>();
 		List<String> skippedSamples = new ArrayList<>();
 		Map<String, Integer> skippedReasons = new LinkedHashMap<>();
 		int totalOperations = 0;
@@ -99,8 +99,8 @@ class MetricOpenApiParser implements MetricMetadataParser {
 				}
 				totalOperations++;
 				ParseOutcome outcome = toDefinition(root, path, method.toUpperCase(Locale.ROOT), operation);
-				if (outcome.definition() != null) {
-					definitions.add(outcome.definition());
+				if (outcome.entry() != null) {
+					entries.add(outcome.entry());
 				}
 				else {
 					skippedReasons.merge(outcome.skipReason(), 1, Integer::sum);
@@ -113,8 +113,9 @@ class MetricOpenApiParser implements MetricMetadataParser {
 		}
 		log.info(
 				"Metric OpenAPI parsing completed. totalOperations={}, definitionCount={}, skippedReasons={}, samples={}, skippedSamples={}",
-				totalOperations, definitions.size(), skippedReasons, summarizeDefinitions(definitions), skippedSamples);
-		return definitions;
+				totalOperations, entries.size(), skippedReasons, summarizeDefinitions(entries), skippedSamples);
+		validateUniqueIdentifiers(entries);
+		return new ParsedMetricCatalog(entries);
 	}
 
 	private ParseOutcome toDefinition(JsonNode root, String path, String httpMethod, JsonNode operation) {
@@ -138,26 +139,33 @@ class MetricOpenApiParser implements MetricMetadataParser {
 				extractSchemaNamedExample(requestSchema, "metricName"), summary,
 				firstMetricTag(readStringList(operation.path("tags"))), operationId, buildFallbackMetricName(path));
 		List<MetricApiParameter> requestParameters = extractRequestParameters(root, operation, requestSchema);
-		return ParseOutcome.of(MetricDefinition.builder()
+		String metricKey = firstNonBlank(text(operation, "x-data-agent-metric-id"), metricCode, operationId,
+				buildFallbackMetricCode(httpMethod, path));
+		MetricDefinition definition = MetricDefinition.builder()
+			.metricKey(metricKey)
 			.metricCode(metricCode)
 			.metricName(metricName)
 			.aliases(buildAliases(operation, metricName))
 			.summary(summary)
 			.description(joinText(description,
 					firstNonBlank(text(responseSchema, "description"), text(requestSchema, "description"))))
-			.operationId(operationId)
-			.httpMethod(httpMethod)
-			.path(path)
-			.requestParameters(requestParameters)
-			.requestSchema(requestSchema == null ? NullNode.getInstance() : requestSchema)
-			.responseSchema(responseSchema)
 			.supportedGranularities(findEnumValues(requestSchema, "granularity", "period", "cycle"))
 			.supportedDimensions(findNamedProperties(requestSchema, "dimension", "group", "groupBy"))
 			.supportedFilters(findNamedProperties(requestSchema, "filter", "where"))
 			.examples(extractExamples(operation))
 			.tags(readStringList(operation.path("tags")))
 			.lastSyncTime(Instant.now().toEpochMilli())
-			.build());
+			.build();
+		MetricApiContract contract = MetricApiContract.builder()
+			.operationId(operationId)
+			.httpMethod(httpMethod)
+			.path(path)
+			.requestParameters(requestParameters)
+			.requestSchema(requestSchema == null ? NullNode.getInstance() : requestSchema)
+			.responseSchema(responseSchema)
+			.build();
+		return ParseOutcome.of(new MetricCatalogEntry(definition, contract,
+				new MetricBinding(metricKey, contract.apiId()), MetricServiceStatus.ONLINE, false, "COMPLETED", null));
 	}
 
 	private List<MetricApiParameter> extractRequestParameters(JsonNode root, JsonNode operation,
@@ -666,20 +674,35 @@ class MetricOpenApiParser implements MetricMetadataParser {
 		return StringUtils.hasText(normalized) ? normalized : "metric";
 	}
 
-	private List<String> summarizeDefinitions(List<MetricDefinition> definitions) {
-		if (definitions == null || definitions.isEmpty()) {
+	private void validateUniqueIdentifiers(List<MetricCatalogEntry> entries) {
+		Set<String> metricKeys = new LinkedHashSet<>();
+		Set<String> operationIds = new LinkedHashSet<>();
+		for (MetricCatalogEntry entry : entries) {
+			String metricKey = entry.definition().metricKey();
+			String operationId = entry.contract().apiId();
+			if (!StringUtils.hasText(metricKey) || !metricKeys.add(metricKey)) {
+				throw new IllegalArgumentException("指标 metricKey 为空或重复：" + metricKey);
+			}
+			if (!StringUtils.hasText(operationId) || !operationIds.add(operationId)) {
+				throw new IllegalArgumentException("指标 operationId 为空或重复：" + operationId);
+			}
+		}
+	}
+
+	private List<String> summarizeDefinitions(List<MetricCatalogEntry> entries) {
+		if (entries == null || entries.isEmpty()) {
 			return List.of();
 		}
-		return definitions.stream()
+		return entries.stream()
 			.limit(5)
-			.map(definition -> "%s/%s".formatted(definition.metricCode(), definition.metricName()))
+			.map(entry -> "%s/%s".formatted(entry.definition().metricCode(), entry.definition().metricName()))
 			.toList();
 	}
 
-	private record ParseOutcome(MetricDefinition definition, String skipReason) {
+	private record ParseOutcome(MetricCatalogEntry entry, String skipReason) {
 
-		private static ParseOutcome of(MetricDefinition definition) {
-			return new ParseOutcome(definition, "");
+		private static ParseOutcome of(MetricCatalogEntry entry) {
+			return new ParseOutcome(entry, "");
 		}
 
 		private static ParseOutcome skipped(String skipReason) {

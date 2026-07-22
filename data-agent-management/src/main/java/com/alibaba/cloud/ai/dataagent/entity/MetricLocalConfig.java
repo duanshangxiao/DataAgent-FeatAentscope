@@ -13,23 +13,31 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.alibaba.cloud.ai.dataagent.capability.metric;
+package com.alibaba.cloud.ai.dataagent.entity;
 
-/**
- * 指标元数据解析器接口，支持不同格式的指标目录（OpenAPI、自定义 JSON 等）切换。
- */
-public interface MetricMetadataParser {
+import java.time.LocalDateTime;
+import lombok.Data;
 
-	/**
-	 * 从原始文本中解析指标定义列表。
-	 * @param rawDocument 原始元数据文本
-	 * @return 解析出的指标定义列表
-	 */
-	ParsedMetricCatalog parse(String rawDocument);
+/** Locally managed semantic overrides and service status for imported metrics. */
+@Data
+public class MetricLocalConfig {
 
-	/**
-	 * 解析器名称，用于工厂查找（如 "openapi3"、"custom-catalog"）。
-	 */
-	String formatName();
+	private String metricKey;
+
+	private String localMetricName;
+
+	private String localDescription;
+
+	private String localAliases;
+
+	private String serviceStatus;
+
+	private String indexStatus;
+
+	private String lastError;
+
+	private LocalDateTime createdTime;
+
+	private LocalDateTime updatedTime;
 
 }

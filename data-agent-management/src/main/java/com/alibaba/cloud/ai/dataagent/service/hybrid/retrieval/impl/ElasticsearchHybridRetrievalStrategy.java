@@ -117,13 +117,16 @@ public class ElasticsearchHybridRetrievalStrategy extends AbstractHybridRetrieva
 	private SearchRequest buildSearchRequest(String queryText, int topK, Double minScore, String filterString) {
 		log.debug("Building ES request with query: [{}], filter: [{}]", queryText, filterString);
 
-		// A. 构建内容匹配查询 (Match Query)
+		// A. 通用内容召回，同时对指标结构化语义字段加权。不存在的字段不会影响其他向量类型。
 		Query matchQuery = Query.of(q -> q.match(m -> m.field(CONTENT).query(queryText)));
+		Query metricFieldsQuery = Query.of(q -> q.multiMatch(m -> m.query(queryText)
+			.fields("metadata.metricCode.keyword^12", "metadata.metricCode^8", "metadata.metricName^7",
+					"metadata.aliases^6", "metadata.description^2", CONTENT)));
 
 		// B. 构建布尔查询 (Bool Query)
 		Query finalQuery = Query.of(q -> q.bool(b -> {
-			// 1. must: 必须匹配内容
-			b.must(matchQuery);
+			// 1. should: 内容或结构化语义字段至少命中一个
+			b.should(matchQuery, metricFieldsQuery).minimumShouldMatch("1");
 
 			// 2. filter: 如果有过滤条件，注入 QueryStringQuery
 			if (StringUtils.hasText(filterString)) {

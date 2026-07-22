@@ -43,6 +43,7 @@
 | `data-agent-frontend/README-CODE-STYLE.md` | 前端格式、lint、类型与无用代码检查 | 前端工具链变化时 |
 | `docs/KNOWLEDGE_USAGE.md` | 语义模型和业务知识配置 | 知识配置机制变化时 |
 | `docs/ELASTICSEARCH.md` | Elasticsearch 配置与排障 | ES 集成变化时 |
+| `docs/METRIC_CATALOG_RETRIEVAL.md` | 指标/API拆分、公共检索、本地修正与上下架实施方案 | 指标目录或检索机制变化时 |
 
 ### 3.3 状态与经验层
 

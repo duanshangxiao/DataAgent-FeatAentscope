@@ -80,9 +80,9 @@ The main flow is not a fixed node graph. There is no mandatory intent → planne
 
 ## 6. Data and Retrieval
 
-The MySQL baseline contains 14 tables:
+The MySQL baseline contains 15 tables:
 
-`agent`, `business_knowledge`, `semantic_model`, `agent_knowledge`, `datasource`, `logical_relation`, `agent_datasource`, `agent_preset_question`, `agent_skill_binding`, `chat_session`, `chat_message`, `agent_datasource_tables`, `agent_datasource_columns`, and `model_config`.
+`agent`, `business_knowledge`, `metric_local_config`, `semantic_model`, `agent_knowledge`, `datasource`, `logical_relation`, `agent_datasource`, `agent_preset_question`, `agent_skill_binding`, `chat_session`, `chat_message`, `agent_datasource_tables`, `agent_datasource_columns`, and `model_config`.
 
 Keep these files synchronized:
 
@@ -92,6 +92,8 @@ Keep these files synchronized:
 The application does not run startup migrations by default. Existing databases require documented manual alignment.
 
 `application.yml` currently selects `spring.ai.vectorstore.type=elasticsearch`, with 1024 dimensions and hybrid vector/keyword retrieval. PGVector dependencies and example configuration remain available as an optional backend.
+
+The metric catalog separates searchable business semantics (`MetricDefinition`) from executable HTTP contracts (`MetricApiContract`) and binds them through a stable `metricKey`. `MetricRetrievalService` is shared by the runtime tool and the management-page search console. Local metric names, descriptions, aliases, and online/offline state are stored in `metric_local_config`; catalog documents are activated by generation so search, describe, and execute use the same snapshot. See `docs/METRIC_CATALOG_RETRIEVAL.md` for the design and manual database upgrade.
 
 Business datasources include MySQL, PostgreSQL, Oracle, SQL Server, Hive, Dameng, and H2. Per-agent table and column allowlists plus AST validation constrain generated SQL before execution.
 
@@ -119,5 +121,6 @@ Business datasources include MySQL, PostgreSQL, Oracle, SQL Server, Hive, Dameng
 - `docs/todolist.md`: active remediation roadmap
 - `docs/DEVELOPER_GUIDE.md`: development and verification
 - `docs/ELASTICSEARCH.md`: Elasticsearch setup and troubleshooting
+- `docs/METRIC_CATALOG_RETRIEVAL.md`: metric catalog, shared retrieval, local overrides, and service status
 - `docs/KNOWLEDGE_USAGE.md`: semantic model and knowledge configuration
 - `docs/LESSONS.md`: historical failures and reusable lessons

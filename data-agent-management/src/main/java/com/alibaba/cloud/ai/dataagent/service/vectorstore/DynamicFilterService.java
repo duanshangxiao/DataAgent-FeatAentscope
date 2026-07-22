@@ -15,6 +15,7 @@
  */
 package com.alibaba.cloud.ai.dataagent.service.vectorstore;
 
+import com.alibaba.cloud.ai.dataagent.capability.metric.MetricDefinitionLookup;
 import com.alibaba.cloud.ai.dataagent.constant.Constant;
 import com.alibaba.cloud.ai.dataagent.constant.DocumentMetadataConstant;
 import com.alibaba.cloud.ai.dataagent.mapper.AgentKnowledgeMapper;
@@ -24,6 +25,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.vectorstore.filter.Filter;
 import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,6 +41,8 @@ public class DynamicFilterService {
 
 	private final BusinessKnowledgeMapper businessKnowledgeMapper;
 
+	private final MetricDefinitionLookup metricDefinitionLookup;
+
 	public Filter.Expression buildDynamicFilter(String agentId, String vectorType) {
 		FilterExpressionBuilder b = new FilterExpressionBuilder();
 		List<Filter.Expression> conditions = new ArrayList<>();
@@ -53,6 +57,11 @@ public class DynamicFilterService {
 				conditions.clear();
 				conditions.add(b.eq(Constant.AGENT_ID, Constant.METRIC_GLOBAL_AGENT_ID).build());
 				conditions.add(b.eq(DocumentMetadataConstant.VECTOR_TYPE, vectorType).build());
+				conditions.add(b.eq(DocumentMetadataConstant.SERVICE_STATUS, "ONLINE").build());
+				if (StringUtils.hasText(metricDefinitionLookup.generation())) {
+					conditions.add(b.eq(DocumentMetadataConstant.METRIC_GENERATION,
+							metricDefinitionLookup.generation()).build());
+				}
 				break;
 
 			case DocumentMetadataConstant.AGENT_KNOWLEDGE:

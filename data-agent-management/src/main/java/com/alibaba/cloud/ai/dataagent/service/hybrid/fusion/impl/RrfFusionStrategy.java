@@ -15,12 +15,13 @@
  */
 package com.alibaba.cloud.ai.dataagent.service.hybrid.fusion.impl;
 
+import com.alibaba.cloud.ai.dataagent.constant.DocumentMetadataConstant;
 import com.alibaba.cloud.ai.dataagent.service.hybrid.fusion.FusionStrategy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
 import org.springframework.util.StringUtils;
 
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -39,9 +40,9 @@ public class RrfFusionStrategy implements FusionStrategy {
 		int k = 60;
 
 		// 使用Map存储每个文档的RRF分数
-		Map<String, Double> rrfScores = new HashMap<>();
+		Map<String, Double> rrfScores = new LinkedHashMap<>();
 		// 使用Map存储文档ID到Document对象的映射
-		Map<String, Document> documentMap = new HashMap<>();
+		Map<String, Document> documentMap = new LinkedHashMap<>();
 
 		for (List<Document> resultList : resultLists) {
 			if (resultList == null) {
@@ -70,14 +71,18 @@ public class RrfFusionStrategy implements FusionStrategy {
 		// 按RRF分数降序排序，取topK个
 		return rrfScores.entrySet()
 			.stream()
-			.sorted(Map.Entry.<String, Double>comparingByValue().reversed())
+			.sorted(Map.Entry.<String, Double>comparingByValue().reversed().thenComparing(Map.Entry::getKey))
 			.limit(topK)
-			.map(entry -> documentMap.get(entry.getKey()))
+			.map(entry -> documentMap.get(entry.getKey()).mutate().score(entry.getValue()).build())
 			.collect(Collectors.toList());
 
 	}
 
 	private String getDocumentId(Document document) {
+		Object metricKey = document.getMetadata().get(DocumentMetadataConstant.METRIC_KEY);
+		if (metricKey != null && StringUtils.hasText(metricKey.toString())) {
+			return "metric:" + metricKey;
+		}
 		if (StringUtils.hasText(document.getId())) {
 			return document.getId();
 		}

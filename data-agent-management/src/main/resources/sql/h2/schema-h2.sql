@@ -46,6 +46,19 @@ CREATE TABLE IF NOT EXISTS business_knowledge (
   FOREIGN KEY (agent_id) REFERENCES agent(id) ON DELETE CASCADE
 ) ENGINE = InnoDB COMMENT = '业务知识表';
 
+CREATE TABLE IF NOT EXISTS metric_local_config (
+  metric_key VARCHAR(255) NOT NULL,
+  local_metric_name VARCHAR(255) DEFAULT NULL,
+  local_description TEXT,
+  local_aliases TEXT,
+  service_status VARCHAR(20) NOT NULL DEFAULT 'ONLINE',
+  index_status VARCHAR(20) NOT NULL DEFAULT 'COMPLETED',
+  last_error VARCHAR(500) DEFAULT NULL,
+  created_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (metric_key)
+) ENGINE = InnoDB COMMENT = '指标本地配置表';
+
 -- 语义模型表
 CREATE TABLE IF NOT EXISTS semantic_model (
   id INT NOT NULL AUTO_INCREMENT,

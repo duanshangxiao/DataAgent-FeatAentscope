@@ -155,15 +155,17 @@ curl -s "http://localhost:9200/spring-ai-document-index/_mapping?pretty"
 ```
 用户查询 → AgentVectorStoreService.search()
   ├── 向量搜索: ES dense_vector (cosine 相似度)
-  ├── 关键词搜索: ES match query on content 字段
-  └── RRF 融合 (k=60) → 去重排序 → topK 结果
+  ├── 关键词搜索: content + 指标结构化语义字段加权
+  └── RRF 融合 (k=60) → 稳定业务键去重 → 写回融合分数 → topK 结果
 ```
 
 关键词搜索通过 `ElasticsearchHybridRetrievalStrategy` 实现：
 - 获取原生 `ElasticsearchClient`
-- 对 `content` 字段执行 match query
+- 对 `content` 执行 match，并对指标 `metricCode/metricName/aliases/description` 字段加权
 - 支持 `Filter.Expression` 过滤（如按 agentId、vectorType 筛选）
 - ES 不可用时降级为空列表，融合退化为纯向量结果
+
+指标文档额外包含 `metricKey`、`generation` 和 `serviceStatus`。查询只访问当前活动 generation 的上架指标；OpenAPI 同步和本地语义修正先完整写入新 generation，激活成功后再清理旧版本，避免“先删后写”暴露空目录或半目录。指标向量文本只保存业务语义，不再混入 HTTP 路径和请求参数。
 
 ## 7. 故障排查
 

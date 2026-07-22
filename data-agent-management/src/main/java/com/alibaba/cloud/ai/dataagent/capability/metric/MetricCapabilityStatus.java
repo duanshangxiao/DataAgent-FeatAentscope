@@ -74,6 +74,7 @@ public class MetricCapabilityStatus {
 		this.ready = true;
 		this.definitionCount = count;
 		this.lastRefreshSuccessTime = timestamp;
+		this.lastRefreshError = null;
 	}
 
 	void markRefreshFailure(String error, long timestamp) {

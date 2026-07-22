@@ -47,6 +47,22 @@ CREATE TABLE IF NOT EXISTS business_knowledge (
   FOREIGN KEY (agent_id) REFERENCES agent(id) ON DELETE CASCADE
 ) ENGINE = InnoDB COMMENT = '业务知识表';
 
+-- 指标本地语义修正与服务状态（OpenAPI 刷新不得覆盖）
+CREATE TABLE IF NOT EXISTS metric_local_config (
+  metric_key VARCHAR(255) NOT NULL COMMENT '稳定指标标识',
+  local_metric_name VARCHAR(255) DEFAULT NULL COMMENT '本地指标名称；为空时继承OpenAPI',
+  local_description TEXT COMMENT '本地指标描述；为空时继承OpenAPI',
+  local_aliases TEXT COMMENT '本地补充别名，JSON数组',
+  service_status VARCHAR(20) NOT NULL DEFAULT 'ONLINE' COMMENT '服务状态：ONLINE/OFFLINE',
+  index_status VARCHAR(20) NOT NULL DEFAULT 'COMPLETED' COMMENT '索引状态：PENDING/COMPLETED/FAILED',
+  last_error VARCHAR(500) DEFAULT NULL COMMENT '最近一次索引失败原因',
+  created_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (metric_key),
+  INDEX idx_metric_local_service_status (service_status),
+  INDEX idx_metric_local_index_status (index_status)
+) ENGINE = InnoDB COMMENT = '指标本地配置表';
+
 -- 语义模型表
 CREATE TABLE IF NOT EXISTS `semantic_model` (
   `id` int(11) NOT NULL AUTO_INCREMENT,

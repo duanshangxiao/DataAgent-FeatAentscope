@@ -18,56 +18,105 @@ package com.alibaba.cloud.ai.dataagent.capability.metric;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+/** Atomic runtime snapshot shared by search, describe and execute. */
 @Component
 public class MetricDefinitionLookup {
 
-	private final AtomicReference<Map<String, MetricDefinition>> definitionsRef = new AtomicReference<>(Map.of());
+	private final AtomicReference<CatalogSnapshot> snapshotRef = new AtomicReference<>(CatalogSnapshot.empty());
 
-	void refresh(Iterable<MetricDefinition> definitions) {
-		Map<String, MetricDefinition> map = new LinkedHashMap<>();
-		if (definitions != null) {
-			for (MetricDefinition definition : definitions) {
-				if (definition != null && StringUtils.hasText(definition.apiId())) {
-					map.put(definition.apiId(), definition);
+	void refresh(Iterable<MetricCatalogEntry> entries, String generation) {
+		Map<String, MetricCatalogEntry> byKey = new LinkedHashMap<>();
+		Map<String, String> identifierToKey = new LinkedHashMap<>();
+		if (entries != null) {
+			for (MetricCatalogEntry entry : entries) {
+				if (entry == null || entry.definition() == null
+						|| !StringUtils.hasText(entry.definition().metricKey())) {
+					continue;
 				}
+				String metricKey = entry.definition().metricKey();
+				if (byKey.put(metricKey, entry) != null) {
+					throw new IllegalArgumentException("重复的指标 metricKey：" + metricKey);
+				}
+				register(identifierToKey, metricKey, metricKey);
+				register(identifierToKey, entry.definition().metricCode(), metricKey);
+				register(identifierToKey, entry.contract().operationId(), metricKey);
+				register(identifierToKey, entry.contract().apiId(), metricKey);
+				register(identifierToKey, entry.contract().path(), metricKey);
 			}
 		}
-		definitionsRef.set(Map.copyOf(map));
+		snapshotRef.set(new CatalogSnapshot(generation == null ? "" : generation, Map.copyOf(byKey),
+				Map.copyOf(identifierToKey)));
 	}
 
-	Optional<MetricDefinition> get(String identifier) {
+	private void register(Map<String, String> index, String identifier, String metricKey) {
+		if (StringUtils.hasText(identifier)) {
+			index.putIfAbsent(identifier.trim().toLowerCase(Locale.ROOT), metricKey);
+		}
+	}
+
+	public Optional<MetricCatalogEntry> getEntry(String identifier) {
 		if (!StringUtils.hasText(identifier)) {
 			return Optional.empty();
 		}
-		Map<String, MetricDefinition> definitions = definitionsRef.get();
-		MetricDefinition direct = definitions.get(identifier.trim());
-		if (direct != null) {
-			return Optional.of(direct);
-		}
-		return definitions.values()
-			.stream()
-			.filter(definition -> identifier.trim().equalsIgnoreCase(definition.operationId())
-					|| identifier.trim().equalsIgnoreCase(definition.metricCode())
-					|| identifier.trim().equalsIgnoreCase(definition.path()))
-			.findFirst();
+		CatalogSnapshot snapshot = snapshotRef.get();
+		String metricKey = snapshot.identifierToKey().get(identifier.trim().toLowerCase(Locale.ROOT));
+		return Optional.ofNullable(metricKey == null ? null : snapshot.entriesByKey().get(metricKey));
+	}
+
+	public Optional<MetricCatalogEntry> getOnlineEntry(String identifier) {
+		return getEntry(identifier).filter(MetricCatalogEntry::online);
+	}
+
+	Optional<MetricDefinition> get(String identifier) {
+		return getOnlineEntry(identifier).map(MetricCatalogEntry::definition);
+	}
+
+	public List<MetricCatalogEntry> listEntries() {
+		return new ArrayList<>(snapshotRef.get().entriesByKey().values());
 	}
 
 	public List<MetricDefinition> listAll() {
-		return new ArrayList<>(definitionsRef.get().values());
+		return listEntries().stream().map(MetricCatalogEntry::definition).toList();
+	}
+
+	public String generation() {
+		return snapshotRef.get().generation();
+	}
+
+	void updateRuntimeStatus(String metricKey, MetricServiceStatus status) {
+		CatalogSnapshot current = snapshotRef.get();
+		MetricCatalogEntry existing = current.entriesByKey().get(metricKey);
+		if (existing == null) {
+			throw new IllegalArgumentException("未找到指标：" + metricKey);
+		}
+		Map<String, MetricCatalogEntry> updated = new LinkedHashMap<>(current.entriesByKey());
+		updated.put(metricKey, new MetricCatalogEntry(existing.definition(), existing.contract(), existing.binding(),
+				status, existing.hasLocalOverride(), existing.indexStatus(), existing.indexError()));
+		snapshotRef.set(new CatalogSnapshot(current.generation(), Map.copyOf(updated), current.identifierToKey()));
 	}
 
 	boolean isAvailable() {
-		return !definitionsRef.get().isEmpty();
+		return snapshotRef.get().entriesByKey().values().stream().anyMatch(MetricCatalogEntry::online);
 	}
 
 	int size() {
-		return definitionsRef.get().size();
+		return (int) snapshotRef.get().entriesByKey().values().stream().filter(MetricCatalogEntry::online).count();
+	}
+
+	private record CatalogSnapshot(String generation, Map<String, MetricCatalogEntry> entriesByKey,
+			Map<String, String> identifierToKey) {
+
+		private static CatalogSnapshot empty() {
+			return new CatalogSnapshot("", Map.of(), Map.of());
+		}
+
 	}
 
 }

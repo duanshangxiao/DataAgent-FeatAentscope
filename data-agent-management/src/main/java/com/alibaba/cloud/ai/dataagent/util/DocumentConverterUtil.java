@@ -22,7 +22,6 @@ import com.alibaba.cloud.ai.dataagent.constant.DocumentMetadataConstant;
 import com.alibaba.cloud.ai.dataagent.entity.AgentKnowledge;
 import com.alibaba.cloud.ai.dataagent.entity.BusinessKnowledge;
 import com.alibaba.cloud.ai.dataagent.capability.metric.MetricDefinition;
-import com.alibaba.cloud.ai.dataagent.capability.metric.MetricApiParameter;
 import lombok.extern.slf4j.Slf4j;                       
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.ai.document.Document;
@@ -127,50 +126,42 @@ public class DocumentConverterUtil {
 		return new Document(content, metadata);
 	}
 
-	public static Document convertMetricToDocument(String agentId, MetricDefinition definition) {
+	public static Document convertMetricToDocument(String agentId, MetricDefinition definition, String generation) {
 		StringBuilder content = new StringBuilder();
-		content.append(definition.metricCode()).append(" ");
-		content.append(definition.metricName()).append(" ");
-		if (StringUtils.isNotEmpty(definition.summary())) {
-			content.append(definition.summary()).append(" ");
-		}
+		appendMetricText(content, definition.metricCode());
+		appendMetricText(content, definition.metricName());
+		appendMetricText(content, definition.summary());
 		if (definition.aliases() != null && !definition.aliases().isEmpty()) {
-			content.append(String.join(" ", definition.aliases())).append(" ");
+			appendMetricText(content, String.join(" ", definition.aliases()));
 		}
-		if (StringUtils.isNotEmpty(definition.description())) {
-			content.append(definition.description()).append(" ");
+		appendMetricText(content, definition.description());
+		if (definition.examples() != null && !definition.examples().isEmpty()) {
+			appendMetricText(content, String.join(" ", definition.examples()));
 		}
-		if (definition.tags() != null && !definition.tags().isEmpty()) {
-			content.append(String.join(" ", definition.tags())).append(" ");
-		}
-		List<MetricApiParameter> params = definition.requestParameters();
-		if (params != null && !params.isEmpty()) {
-			for (MetricApiParameter p : params) {
-				content.append(p.name()).append(" ");
-				if (StringUtils.isNotEmpty(p.description())) {
-					content.append(p.description()).append(" ");
-				}
-			}
-		}
-		if (definition.supportedGranularities() != null && !definition.supportedGranularities().isEmpty()) {
-			content.append(String.join(" ", definition.supportedGranularities())).append(" ");
+		if (definition.supportedDimensions() != null && !definition.supportedDimensions().isEmpty()) {
+			appendMetricText(content, String.join(" ", definition.supportedDimensions()));
 		}
 		Map<String, Object> metadata = new HashMap<>();
 		metadata.put(DocumentMetadataConstant.VECTOR_TYPE, DocumentMetadataConstant.METRIC);
 		metadata.put(Constant.AGENT_ID, agentId);
+		metadata.put(DocumentMetadataConstant.METRIC_KEY, definition.metricKey());
 		metadata.put(DocumentMetadataConstant.METRIC_CODE, definition.metricCode());
-		metadata.put(DocumentMetadataConstant.OPERATION_ID, definition.operationId());
+		metadata.put(DocumentMetadataConstant.METRIC_NAME, definition.metricName());
+		metadata.put(DocumentMetadataConstant.METRIC_ALIASES, String.join(" ", definition.aliases()));
+		metadata.put(DocumentMetadataConstant.METRIC_GENERATION, generation);
+		metadata.put(DocumentMetadataConstant.SERVICE_STATUS, "ONLINE");
 		metadata.put("description", definition.description() != null ? definition.description() : "");
-		metadata.put("httpMethod", definition.httpMethod());
-		metadata.put("path", definition.path());
-		if (params != null && !params.isEmpty()) {
-			List<String> paramNames = new java.util.ArrayList<>();
-			for (MetricApiParameter p : params) {
-				paramNames.add(p.name());
-			}
-			metadata.put("requestParameters", String.join(",", paramNames));
+		return Document.builder()
+			.id("metric:" + generation + ":" + definition.metricKey())
+			.text(content.toString().trim())
+			.metadata(metadata)
+			.build();
+	}
+
+	private static void appendMetricText(StringBuilder content, String value) {
+		if (StringUtils.isNotEmpty(value)) {
+			content.append(value.trim()).append(' ');
 		}
-		return new Document(content.toString().trim(), metadata);
 	}
 
 	public static Document convertQaFaqKnowledgeToDocument(AgentKnowledge knowledge) {

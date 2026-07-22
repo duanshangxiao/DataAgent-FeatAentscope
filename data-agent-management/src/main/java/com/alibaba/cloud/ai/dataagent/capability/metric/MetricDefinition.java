@@ -15,30 +15,23 @@
  */
 package com.alibaba.cloud.ai.dataagent.capability.metric;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 import lombok.Builder;
 import org.springframework.util.StringUtils;
 
 @Builder
-public record MetricDefinition(String metricCode, String metricName, List<String> aliases, String summary, String description,
-		String operationId, String httpMethod, String path, List<MetricApiParameter> requestParameters,
-		JsonNode requestSchema, JsonNode responseSchema, List<String> supportedGranularities,
+public record MetricDefinition(String metricKey, String metricCode, String metricName, List<String> aliases,
+		String summary, String description, List<String> supportedGranularities,
 		List<String> supportedDimensions, List<String> supportedFilters, List<String> examples, List<String> tags,
 		long lastSyncTime) {
 
 	public MetricDefinition {
 		aliases = aliases == null ? List.of() : List.copyOf(aliases);
-		requestParameters = requestParameters == null ? List.of() : List.copyOf(requestParameters);
 		supportedGranularities = supportedGranularities == null ? List.of() : List.copyOf(supportedGranularities);
 		supportedDimensions = supportedDimensions == null ? List.of() : List.copyOf(supportedDimensions);
 		supportedFilters = supportedFilters == null ? List.of() : List.copyOf(supportedFilters);
 		examples = examples == null ? List.of() : List.copyOf(examples);
 		tags = tags == null ? List.of() : List.copyOf(tags);
-	}
-
-	public String apiId() {
-		return StringUtils.hasText(operationId) ? operationId : httpMethod + " " + path;
 	}
 
 	public String displayName() {
@@ -48,11 +41,7 @@ public record MetricDefinition(String metricCode, String metricName, List<String
 		if (StringUtils.hasText(metricName)) {
 			return metricName;
 		}
-		return apiId();
-	}
-
-	public List<MetricApiParameter> requiredParameters() {
-		return requestParameters.stream().filter(MetricApiParameter::required).toList();
+		return StringUtils.hasText(metricCode) ? metricCode : metricKey;
 	}
 
 }

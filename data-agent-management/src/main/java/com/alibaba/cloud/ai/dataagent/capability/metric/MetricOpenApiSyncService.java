@@ -16,6 +16,9 @@
 package com.alibaba.cloud.ai.dataagent.capability.metric;
 
 import com.alibaba.cloud.ai.dataagent.constant.Constant;
+import com.alibaba.cloud.ai.dataagent.constant.DocumentMetadataConstant;
+import com.alibaba.cloud.ai.dataagent.entity.MetricLocalConfig;
+import com.alibaba.cloud.ai.dataagent.mapper.MetricLocalConfigMapper;
 import com.alibaba.cloud.ai.dataagent.properties.MetricCapabilityProperties;
 import com.alibaba.cloud.ai.dataagent.service.vectorstore.AgentVectorStoreService;
 import com.alibaba.cloud.ai.dataagent.util.DocumentConverterUtil;
@@ -24,6 +27,8 @@ import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import lombok.RequiredArgsConstructor;
@@ -56,7 +61,13 @@ public class MetricOpenApiSyncService {
 
 	private final MetricDefinitionLookup metricDefinitionLookup;
 
+	private final MetricCatalogAssembler metricCatalogAssembler;
+
+	private final MetricLocalConfigMapper metricLocalConfigMapper;
+
 	private final AtomicReference<String> lastSuccessfulHash = new AtomicReference<>("");
+
+	private final AtomicReference<ParsedMetricCatalog> sourceCatalogRef = new AtomicReference<>(ParsedMetricCatalog.empty());
 
 	private final AtomicBoolean refreshing = new AtomicBoolean(false);
 
@@ -113,19 +124,21 @@ public class MetricOpenApiSyncService {
 				return;
 			}
 			MetricMetadataParser parser = parserFactory.getParser(properties.getParserFormat());
-			List<MetricDefinition> definitions = parser.parse(rawDocument);
-			if (definitions.isEmpty()) {
+			ParsedMetricCatalog sourceCatalog = parser.parse(rawDocument);
+			if (sourceCatalog.entries().isEmpty()) {
 				log.warn("Metric OpenAPI parsed but produced no valid metric definitions. swaggerUrl={}, format={}",
 						properties.getSwaggerUrl(), properties.getParserFormat());
 				return;
 			}
-			syncToVectorStore(definitions);
-			metricDefinitionLookup.refresh(definitions);
+			activateCatalog(sourceCatalog);
+			sourceCatalogRef.set(sourceCatalog);
 			lastSuccessfulHash.set(currentHash);
 			catalogReady = true;
-			metricCapabilityStatus.markRefreshSuccess(definitions.size(), System.currentTimeMillis());
+			long onlineCount = metricDefinitionLookup.listEntries().stream().filter(MetricCatalogEntry::online).count();
+			metricCapabilityStatus.markRefreshSuccess((int) onlineCount, System.currentTimeMillis());
 			log.info("Metric catalog synced to vector store. definitionCount={}, agentId={}, samples={}",
-					definitions.size(), Constant.METRIC_GLOBAL_AGENT_ID, summarizeDefinitions(definitions));
+					onlineCount, Constant.METRIC_GLOBAL_AGENT_ID,
+					summarizeDefinitions(metricDefinitionLookup.listEntries()));
 		}
 		catch (Exception ex) {
 			Throwable root = ex;
@@ -140,18 +153,41 @@ public class MetricOpenApiSyncService {
 		}
 	}
 
-	private void syncToVectorStore(List<MetricDefinition> definitions) {
+	public synchronized void rebuildFromLocalConfig() {
+		ParsedMetricCatalog sourceCatalog = sourceCatalogRef.get();
+		if (sourceCatalog.entries().isEmpty()) {
+			throw new IllegalStateException("指标源目录尚未就绪，无法应用本地配置。");
+		}
+		activateCatalog(sourceCatalog);
+	}
+
+	private synchronized void activateCatalog(ParsedMetricCatalog sourceCatalog) {
+		List<MetricCatalogEntry> entries = metricCatalogAssembler.assemble(sourceCatalog);
+		String previousGeneration = metricDefinitionLookup.generation();
+		String generation = UUID.randomUUID().toString();
 		try {
-			agentVectorStoreService.deleteDocumentsByVectorType(Constant.METRIC_GLOBAL_AGENT_ID,
-					com.alibaba.cloud.ai.dataagent.constant.DocumentMetadataConstant.METRIC);
+			syncToVectorStore(entries, generation);
+			markLocalIndexStatus("COMPLETED", null);
+			metricDefinitionLookup.refresh(metricCatalogAssembler.assemble(sourceCatalog), generation);
+			deleteGeneration(previousGeneration);
 		}
 		catch (Exception ex) {
-			log.warn("Failed to delete old metric documents before import. agentId={}",
-					Constant.METRIC_GLOBAL_AGENT_ID, ex);
+			markLocalIndexStatus("FAILED", abbreviate(ex.getMessage()));
+			deleteGeneration(generation);
+			throw ex;
 		}
+	}
+
+	private void syncToVectorStore(List<MetricCatalogEntry> entries, String generation) {
 		List<Document> documents = new ArrayList<>();
-		for (MetricDefinition definition : definitions) {
-			documents.add(DocumentConverterUtil.convertMetricToDocument(Constant.METRIC_GLOBAL_AGENT_ID, definition));
+		for (MetricCatalogEntry entry : entries) {
+			if (entry.online()) {
+				documents.add(DocumentConverterUtil.convertMetricToDocument(Constant.METRIC_GLOBAL_AGENT_ID,
+						entry.definition(), generation));
+			}
+		}
+		if (documents.isEmpty()) {
+			return;
 		}
 		for (int i = 0; i < documents.size(); i += EMBEDDING_BATCH_SIZE) {
 			int end = Math.min(i + EMBEDDING_BATCH_SIZE, documents.size());
@@ -160,8 +196,39 @@ public class MetricOpenApiSyncService {
 		}
 	}
 
+	private void deleteGeneration(String generation) {
+		if (!StringUtils.hasText(generation)) {
+			return;
+		}
+		try {
+			agentVectorStoreService.deleteDocumentsByMetadata(Map.of(Constant.AGENT_ID,
+					Constant.METRIC_GLOBAL_AGENT_ID, DocumentMetadataConstant.VECTOR_TYPE,
+					DocumentMetadataConstant.METRIC, DocumentMetadataConstant.METRIC_GENERATION, generation));
+		}
+		catch (Exception ex) {
+			log.warn("Failed to clean metric catalog generation. generation={}", generation, ex);
+		}
+	}
+
+	private void markLocalIndexStatus(String status, String error) {
+		for (MetricLocalConfig config : metricLocalConfigMapper.selectAll()) {
+			metricLocalConfigMapper.updateIndexStatus(config.getMetricKey(), status, error);
+		}
+	}
+
+	private String abbreviate(String value) {
+		if (!StringUtils.hasText(value)) {
+			return "unknown error";
+		}
+		return value.length() <= 500 ? value : value.substring(0, 500);
+	}
+
 	public boolean isReady() {
 		return catalogReady;
+	}
+
+	public ParsedMetricCatalog sourceCatalog() {
+		return sourceCatalogRef.get();
 	}
 
 	private String sha256(String value) throws Exception {
@@ -174,13 +241,13 @@ public class MetricOpenApiSyncService {
 		return builder.toString();
 	}
 
-	private List<String> summarizeDefinitions(List<MetricDefinition> definitions) {
-		if (definitions == null || definitions.isEmpty()) {
+	private List<String> summarizeDefinitions(List<MetricCatalogEntry> entries) {
+		if (entries == null || entries.isEmpty()) {
 			return List.of();
 		}
-		return definitions.stream()
+		return entries.stream()
 			.limit(5)
-			.map(definition -> "%s/%s".formatted(definition.metricCode(), definition.metricName()))
+			.map(entry -> "%s/%s".formatted(entry.definition().metricCode(), entry.definition().metricName()))
 			.toList();
 	}
 

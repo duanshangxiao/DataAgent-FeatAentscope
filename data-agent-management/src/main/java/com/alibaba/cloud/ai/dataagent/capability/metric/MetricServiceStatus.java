@@ -15,21 +15,10 @@
  */
 package com.alibaba.cloud.ai.dataagent.capability.metric;
 
-/**
- * 指标元数据解析器接口，支持不同格式的指标目录（OpenAPI、自定义 JSON 等）切换。
- */
-public interface MetricMetadataParser {
+public enum MetricServiceStatus {
 
-	/**
-	 * 从原始文本中解析指标定义列表。
-	 * @param rawDocument 原始元数据文本
-	 * @return 解析出的指标定义列表
-	 */
-	ParsedMetricCatalog parse(String rawDocument);
+	ONLINE,
 
-	/**
-	 * 解析器名称，用于工厂查找（如 "openapi3"、"custom-catalog"）。
-	 */
-	String formatName();
+	OFFLINE
 
 }

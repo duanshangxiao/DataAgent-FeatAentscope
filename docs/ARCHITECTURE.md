@@ -86,9 +86,9 @@ flowchart LR
 
 ### 6.1 管理库
 
-MySQL 基线共 14 张表：
+MySQL 基线共 15 张表：
 
-`agent`, `business_knowledge`, `semantic_model`, `agent_knowledge`, `datasource`, `logical_relation`, `agent_datasource`, `agent_preset_question`, `agent_skill_binding`, `chat_session`, `chat_message`, `agent_datasource_tables`, `agent_datasource_columns`, `model_config`。
+`agent`, `business_knowledge`, `metric_local_config`, `semantic_model`, `agent_knowledge`, `datasource`, `logical_relation`, `agent_datasource`, `agent_preset_question`, `agent_skill_binding`, `chat_session`, `chat_message`, `agent_datasource_tables`, `agent_datasource_columns`, `model_config`。
 
 主基线和测试基线必须同步维护：
 
@@ -100,6 +100,10 @@ MySQL 基线共 14 张表：
 ### 6.2 向量检索
 
 当前 `application.yml` 默认配置 `spring.ai.vectorstore.type=elasticsearch`，索引维度为 1024，并启用向量与关键词双路召回后的融合。PGVector starter 和示例配置仍保留，作为可选切换方案，不是当前默认运行后端。
+
+指标目录使用独立的业务语义模型和 API 契约模型：`MetricDefinition` 只参与检索，`MetricApiContract` 只参与接口执行，二者通过稳定 `metricKey` 和 `MetricBinding` 关联。`MetricRetrievalService` 是指标问数工具与管理页检索验证的唯一公共入口，并在 Agent 作用域内按需使用 `business_knowledge` 扩展本地术语。
+
+OpenAPI 原始语义保持只读；平台本地名称、描述、别名和上下架状态持久化在 `metric_local_config`。指标索引以 generation 先写后切换，搜索、描述和执行共享同一个活动目录快照；下架指标同时受到 ES、业务检索和执行入口三层门禁。详细设计和旧库升级方式见 `docs/METRIC_CATALOG_RETRIEVAL.md`。
 
 ### 6.3 业务数据源
 
@@ -130,5 +134,6 @@ Agent 可连接 MySQL、PostgreSQL、Oracle、SQL Server、Hive、Dameng 和 H2 
 - `docs/todolist.md`：当前整改路线图
 - `docs/DEVELOPER_GUIDE.md`：开发与验证方式
 - `docs/ELASTICSEARCH.md`：Elasticsearch 配置和排障
+- `docs/METRIC_CATALOG_RETRIEVAL.md`：指标目录、公共检索、本地修正和上下架
 - `docs/KNOWLEDGE_USAGE.md`：语义模型和知识配置
 - `docs/LESSONS.md`：历史问题、根因和可复用经验

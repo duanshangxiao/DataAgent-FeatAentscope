@@ -98,7 +98,7 @@ npm install && npm run dev
 2. 将“标准指标查询”与“数据库明细分析”分流，降低模型误用工具的概率。
 3. 为后续混合问题编排打基础，例如“先查 GMV，再补充明细原因分析”。
 
-当前实现覆盖了实施方案中的阶段 1 到阶段 4：能力框架、Swagger 同步、指标工具、运行时路由、技能开关与 explain 记录。`MIXED` 类型已经具备路由与提示约束，但尚未扩展成复杂的多阶段执行编排器。
+当前实现已将业务指标语义与 OpenAPI 调用契约拆分：指标检索只处理名称、编码、别名和业务描述，确定指标后再通过绑定关系读取 HTTP 契约。指标管理页支持本地语义修正、上下架，以及与真实问数共用同一个后端方法的检索验证。`MIXED` 类型已经具备路由与提示约束，但尚未扩展成复杂的多阶段执行编排器。
 
 ### 启用方式
 
@@ -135,21 +135,24 @@ spring:
 | :--- | :--- |
 | `data-agent-management/src/main/java/com/alibaba/cloud/ai/dataagent/capability/CapabilityProvider.java` | capability 通用扩展接口 |
 | `data-agent-management/src/main/java/com/alibaba/cloud/ai/dataagent/capability/CapabilityRoutingService.java` | 路由判定、工具裁剪、运行时指令生成 |
-| `data-agent-management/src/main/java/com/alibaba/cloud/ai/dataagent/capability/metric/MetricCapabilityProvider.java` | 指标 capability 主实现，包含目录同步、检索、工具与执行逻辑 |
+| `data-agent-management/src/main/java/com/alibaba/cloud/ai/dataagent/capability/metric/MetricOpenApiSyncService.java` | 拉取 OpenAPI、生成新目录 generation 并原子切换 |
+| `data-agent-management/src/main/java/com/alibaba/cloud/ai/dataagent/capability/metric/MetricRetrievalService.java` | 问数工具与管理页共用的指标检索入口 |
+| `data-agent-management/src/main/java/com/alibaba/cloud/ai/dataagent/capability/metric/MetricQueryExecutionService.java` | 根据指标绑定读取 API 契约并执行请求 |
+| `data-agent-management/src/main/java/com/alibaba/cloud/ai/dataagent/controller/MetricCapabilityController.java` | 指标列表、修正、上下架、检索验证和同步接口 |
 | `data-agent-management/src/main/java/com/alibaba/cloud/ai/dataagent/agentscope/service/impl/AiAgentRuntimeServiceImpl.java` | 在运行时接入 capability 路由 |
 | `data-agent-management/src/main/java/com/alibaba/cloud/ai/dataagent/agentscope/runtime/AgentRuntimeExtensionFactory.java` | 将路由生成的 runtime instructions 注入 Agent 执行上下文 |
 | `data-agent-management/src/main/java/com/alibaba/cloud/ai/dataagent/service/skill/impl/LocalSkillServiceImpl.java` | 注册内置 skill `builtin-metric-system` |
 | `data-agent-management/src/main/java/com/alibaba/cloud/ai/dataagent/observability/AnswerTraceExplainStore.java` | 记录路由结果、指标目录检索、指标查询摘要 |
-| `docs/duan/data-agent-metric-capability-implementation-plan.md` | 详细技术方案、分阶段目标与测试要求 |
+| `docs/METRIC_CATALOG_RETRIEVAL.md` | 当前指标/API拆分、检索、本地修正、上下架和升级方案 |
 
 ### 运行链路
 
 当前指标能力的执行链路如下：
 
-1. 系统启动后，`MetricOpenApiSyncService` 拉取 Swagger/OpenAPI 文档并构建指标目录索引。
+1. 系统启动后，`MetricOpenApiSyncService` 拉取 Swagger/OpenAPI，将 `MetricDefinition`、`MetricApiContract` 和 `MetricBinding` 分开解析，并构建新的目录 generation。
 2. 用户发起提问后，`AiAgentRuntimeServiceImpl` 会在主执行前调用 `CapabilityRoutingService`。
 3. 若判定为 `METRIC_ONLY`，运行时只保留指标相关工具；若为 `DB_ONLY`，则移除指标工具。
-4. 模型通过 `metric.catalog.search` 检索候选指标，通过 `metric.catalog.describe` 查看口径，通过 `metric.query.execute` 真正发起指标查询。
+4. `metric.catalog.search` 与指标管理页共同调用 `MetricRetrievalService`；确定上架指标后，`describe/execute` 再读取绑定的 API 契约。
 5. 指标工具调用结果会被写入 `AnswerTraceExplainStore`，供 explain 查询与故障排查使用。
 
 ### 维护建议
@@ -157,10 +160,10 @@ spring:
 后续如果需要扩展或修改该能力，建议遵循以下原则：
 
 1. **改 Swagger 解析逻辑时**：优先补 `MetricOpenApiParser` 和目录搜索相关测试，避免不同 OpenAPI 方言导致目录丢失。
-2. **改路由阈值或关键词规则时**：同步检查 `CapabilityRoutingService` 与 `MetricCapabilityProvider` 的测试样例，确保 `METRIC_ONLY / DB_ONLY / MIXED / UNKNOWN` 四类行为稳定。
+2. **改检索阈值或融合规则时**：必须同时验证管理页搜索和问数工具，二者不能出现不同候选顺序；阈值应由标注问题集调优。
 3. **新增指标工具时**：同时更新 skill 文案、runtime instructions、explain 记录，否则模型虽然能看到工具，但不会稳定使用。
 4. **改接口请求/响应结构时**：优先审查 `MetricQueryExecutionService` 的请求构造与结果归一化逻辑，避免调用成功但模型拿不到结构化结果。
-5. **拆分类文件时**：当前指标实现为降低改造成本被集中在 `MetricCapabilityProvider.java` 中，后续若继续演进，建议按 `openapi / catalog / execution / tool / model` 拆分。
+5. **改上下架时**：同时检查 ES 过滤、公共检索二次过滤和执行硬门禁；OpenAPI 刷新不能重置本地状态。
 6. **执行构建时**：项目启用了 JaCoCo 包级覆盖率校验，涉及 capability 的修改需要补单测，否则 `install` 可能因覆盖率不足失败。
 
 ### 推荐测试关注点
@@ -172,6 +175,7 @@ spring:
 3. 路由是否会正确裁剪数据库工具和指标工具。
 4. 指标系统异常时，返回给模型的错误是否清晰可解释。
 5. explain 接口中是否能看到路由摘要、指标目录检索和指标执行步骤。
+6. 下架指标是否无法通过搜索、描述或直接编码执行，管理页检索是否与问数结果一致。
 
 ## 📚 文档导航
 

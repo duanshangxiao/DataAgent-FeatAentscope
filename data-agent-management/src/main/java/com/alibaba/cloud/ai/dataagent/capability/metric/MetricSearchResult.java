@@ -15,21 +15,19 @@
  */
 package com.alibaba.cloud.ai.dataagent.capability.metric;
 
-/**
- * 指标元数据解析器接口，支持不同格式的指标目录（OpenAPI、自定义 JSON 等）切换。
- */
-public interface MetricMetadataParser {
+import java.util.List;
 
-	/**
-	 * 从原始文本中解析指标定义列表。
-	 * @param rawDocument 原始元数据文本
-	 * @return 解析出的指标定义列表
-	 */
-	ParsedMetricCatalog parse(String rawDocument);
+public record MetricSearchResult(String decision, String summary, String originalQuery, String effectiveQuery,
+		List<String> businessKnowledgeTerms, List<Candidate> candidates) {
 
-	/**
-	 * 解析器名称，用于工厂查找（如 "openapi3"、"custom-catalog"）。
-	 */
-	String formatName();
+	public MetricSearchResult {
+		businessKnowledgeTerms = businessKnowledgeTerms == null ? List.of() : List.copyOf(businessKnowledgeTerms);
+		candidates = candidates == null ? List.of() : List.copyOf(candidates);
+	}
+
+	public record Candidate(String metricKey, String metricCode, String metricName, String operationId,
+			String description, List<String> aliases, Double fusedScore, Integer rank, List<String> matchedFields,
+			boolean knowledgeEnhanced, String reason) {
+	}
 
 }

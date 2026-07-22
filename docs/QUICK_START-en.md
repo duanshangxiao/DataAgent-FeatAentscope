@@ -280,6 +280,16 @@ Business knowledge can be set to recall or not recall. After configuration, clic
 
 ![business-knowledge.png](../img/business-knowledge.png)
 
+#### Manage the Metric Catalog
+
+After enabling the metric system, use the Metric Management page to synchronize OpenAPI and inspect the business metric definition together with its read-only API binding. The page supports:
+
+- Adding local metric names, descriptions, and aliases without losing them during later OpenAPI synchronization.
+- Publishing or unpublishing a metric. An unpublished metric cannot be searched, described, or executed by the question-answering flow.
+- Selecting an agent and testing a real user question through the exact same retrieval service used by metric question answering, including candidates, fused scores, and match reasons.
+
+Existing databases must create `metric_local_config` manually before upgrading. See the [Metric Catalog and Retrieval Implementation Plan](METRIC_CATALOG_RETRIEVAL.md) for the DDL and design details.
+
 After success, you can click "Go to Run Interface" to use the agent for data queries. After debugging is complete, you can publish the agent.
 
 > Note: "Access API" is not fully implemented in the current version and is reserved for secondary development.

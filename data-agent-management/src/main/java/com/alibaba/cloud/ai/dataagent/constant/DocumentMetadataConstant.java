@@ -58,6 +58,16 @@ public final class DocumentMetadataConstant {
 	// metricCode
 	public static final String METRIC_CODE = "metricCode";
 
+	public static final String METRIC_KEY = "metricKey";
+
+	public static final String METRIC_NAME = "metricName";
+
+	public static final String METRIC_ALIASES = "aliases";
+
+	public static final String METRIC_GENERATION = "generation";
+
+	public static final String SERVICE_STATUS = "serviceStatus";
+
 	// operationId
 	public static final String OPERATION_ID = "operationId";
 

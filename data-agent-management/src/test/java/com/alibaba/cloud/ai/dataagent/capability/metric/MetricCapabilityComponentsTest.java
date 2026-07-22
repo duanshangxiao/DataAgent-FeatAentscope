@@ -16,15 +16,26 @@
 package com.alibaba.cloud.ai.dataagent.capability.metric;
 
 import com.alibaba.cloud.ai.dataagent.capability.CapabilityRouteType;
+import com.alibaba.cloud.ai.dataagent.entity.BusinessKnowledge;
+import com.alibaba.cloud.ai.dataagent.mapper.BusinessKnowledgeMapper;
 import com.alibaba.cloud.ai.dataagent.properties.MetricCapabilityProperties;
+import com.alibaba.cloud.ai.dataagent.service.vectorstore.AgentVectorStoreService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.springframework.ai.document.Document;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 public class MetricCapabilityComponentsTest {
 
@@ -36,7 +47,7 @@ public class MetricCapabilityComponentsTest {
 	void parser_extractsMetricDefinitionsFromOpenApi() throws Exception {
 		MetricOpenApiParser parser = new MetricOpenApiParser(objectMapper, properties);
 
-		List<MetricDefinition> definitions = parser.parse(objectMapper.readTree("""
+		ParsedMetricCatalog catalog = parser.parse(objectMapper.readTree("""
 				{
 				  "paths": {
 				    "/metrics/gmv/trend": {
@@ -109,9 +120,13 @@ public class MetricCapabilityComponentsTest {
 				}
 				"""));
 
-		assertEquals(2, definitions.size());
+		List<MetricCatalogEntry> entries = catalog.entries();
+		assertEquals(2, entries.size());
+		List<MetricDefinition> definitions = entries.stream().map(MetricCatalogEntry::definition).toList();
 		assertEquals("gmv_trend", definitions.get(0).metricCode());
 		assertEquals("GMV", definitions.get(0).metricName());
+		assertEquals("gmvTrend", entries.get(0).contract().operationId());
+		assertEquals("POST", entries.get(0).contract().httpMethod());
 		assertEquals("dau_trend", definitions.get(1).metricCode());
 		assertEquals("DAU", definitions.get(1).metricName());
 	}
@@ -120,7 +135,7 @@ public class MetricCapabilityComponentsTest {
 	void parser_infersMetricCodeAndNameFromSchemaExamples() throws Exception {
 		MetricOpenApiParser parser = new MetricOpenApiParser(objectMapper, properties);
 
-		List<MetricDefinition> definitions = parser.parse(objectMapper.readTree("""
+		ParsedMetricCatalog catalog = parser.parse(objectMapper.readTree("""
 				{
 				  "paths": {
 				    "/indicator/query": {
@@ -162,6 +177,7 @@ public class MetricCapabilityComponentsTest {
 				}
 				"""));
 
+		List<MetricDefinition> definitions = catalog.entries().stream().map(MetricCatalogEntry::definition).toList();
 		assertEquals(1, definitions.size());
 		assertEquals("payment_amount", definitions.get(0).metricCode());
 		assertEquals("支付金额", definitions.get(0).metricName());
@@ -173,17 +189,23 @@ public class MetricCapabilityComponentsTest {
 		MetricCapabilityProperties execProps = new MetricCapabilityProperties();
 		execProps.setBaseUrl("http://localhost:18080");
 		MetricDefinitionLookup lookup = new MetricDefinitionLookup();
-		lookup.refresh(List.of(MetricDefinition.builder()
+		MetricDefinition definition = MetricDefinition.builder()
+			.metricKey("store_sales_trend")
 			.metricCode("store_sales_trend")
 			.metricName("门店销售额趋势")
 			.summary("查询门店销售额趋势")
 			.description("按门店和时间范围查询销售额趋势")
+			.build();
+		MetricApiContract contract = MetricApiContract.builder()
 			.operationId("storeSalesTrend")
 			.httpMethod("POST")
 			.path("/metrics/store/sales/trend")
 			.requestParameters(List.of(
 					MetricApiParameter.builder().name("storeId").location("query").required(true).description("门店ID").build()))
-			.build()));
+			.build();
+		lookup.refresh(List.of(new MetricCatalogEntry(definition, contract,
+				new MetricBinding(definition.metricKey(), contract.operationId()), MetricServiceStatus.ONLINE, false,
+				"COMPLETED", null)), "test-generation");
 
 		MetricCircuitBreaker cb = new MetricCircuitBreaker(new MetricCapabilityStatus());
 		MetricQueryExecutionService service = new MetricQueryExecutionService(lookup, execProps, WebClient.builder(),
@@ -198,6 +220,75 @@ public class MetricCapabilityComponentsTest {
 		assertEquals("NEED_CLARIFICATION", result.status());
 		assertTrue(result.clarificationMessage().contains("storeId"));
 		assertEquals(1, result.missingRequiredParameters().size());
+	}
+
+	@Test
+	void retrieval_usesBusinessKnowledgeAndExcludesOfflineMetrics() {
+		MetricDefinitionLookup lookup = new MetricDefinitionLookup();
+		MetricCatalogEntry sales = entry("sales_amount", "SALES_AMOUNT", "销售额", List.of("成交额"),
+				MetricServiceStatus.ONLINE);
+		MetricCatalogEntry refund = entry("refund_amount", "REFUND_AMOUNT", "退款金额", List.of(),
+				MetricServiceStatus.OFFLINE);
+		lookup.refresh(List.of(sales, refund), "test-generation");
+
+		AgentVectorStoreService vectorStoreService = mock(AgentVectorStoreService.class);
+		when(vectorStoreService.getDocumentsForAgent(anyString(), anyString(), anyString(), anyInt(), anyDouble()))
+			.thenReturn(List.of());
+		BusinessKnowledgeMapper knowledgeMapper = mock(BusinessKnowledgeMapper.class);
+		BusinessKnowledge knowledge = BusinessKnowledge.builder()
+			.businessTerm("销售额")
+			.synonyms("盘子,流水")
+			.description("支付成功订单的实付金额")
+			.isRecall(1)
+			.build();
+		when(knowledgeMapper.selectByAgentId(1L)).thenReturn(List.of(knowledge));
+		MetricRetrievalService retrievalService = new MetricRetrievalService(vectorStoreService, lookup,
+				knowledgeMapper);
+
+		MetricSearchResult enhanced = retrievalService.search(new MetricSearchCommand("看看本月盘子", "1", 5));
+		assertEquals("MATCH", enhanced.decision());
+		assertEquals("sales_amount", enhanced.candidates().get(0).metricKey());
+		assertTrue(enhanced.businessKnowledgeTerms().contains("销售额"));
+
+		Document offlineDocument = Document.builder()
+			.text("退款金额")
+			.metadata("metricKey", "refund_amount")
+			.score(0.9D)
+			.build();
+		when(vectorStoreService.getDocumentsForAgent(anyString(), anyString(), anyString(), anyInt(), anyDouble()))
+			.thenReturn(List.of(offlineDocument));
+		MetricSearchResult offline = retrievalService.search(new MetricSearchCommand("退款金额", null, 5));
+		assertEquals("NO_MATCH", offline.decision());
+		assertTrue(offline.candidates().isEmpty());
+	}
+
+	@Test
+	void retrieval_skipsVectorSearchWhenNoOnlineCatalogIsActive() {
+		MetricDefinitionLookup lookup = new MetricDefinitionLookup();
+		AgentVectorStoreService vectorStoreService = mock(AgentVectorStoreService.class);
+		BusinessKnowledgeMapper knowledgeMapper = mock(BusinessKnowledgeMapper.class);
+		MetricRetrievalService retrievalService = new MetricRetrievalService(vectorStoreService, lookup,
+				knowledgeMapper);
+
+		MetricSearchResult result = retrievalService.search(new MetricSearchCommand("本月销售额趋势", null, 5));
+
+		assertEquals("NO_MATCH", result.decision());
+		assertTrue(result.candidates().isEmpty());
+		verifyNoInteractions(vectorStoreService, knowledgeMapper);
+	}
+
+	@Test
+	void execute_rejectsOfflineMetricEvenWhenIdentifierIsKnown() {
+		MetricDefinitionLookup lookup = new MetricDefinitionLookup();
+		lookup.refresh(List.of(entry("sales_amount", "SALES_AMOUNT", "销售额", List.of(),
+				MetricServiceStatus.OFFLINE)), "test-generation");
+		MetricQueryExecutionService service = new MetricQueryExecutionService(lookup, properties, WebClient.builder(),
+				new MetricCircuitBreaker(new MetricCapabilityStatus()), objectMapper);
+		MetricQueryRequest request = new MetricQueryRequest();
+		request.setMetricCode("SALES_AMOUNT");
+
+		IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> service.execute(request));
+		assertTrue(error.getMessage().contains("已下架"));
 	}
 
 	@Test
@@ -217,6 +308,24 @@ public class MetricCapabilityComponentsTest {
 
 		assertEquals(CapabilityRouteType.MIXED, result.routeType());
 		assertEquals("metric-system", result.matchedCapabilityId());
+	}
+
+	private MetricCatalogEntry entry(String metricKey, String metricCode, String metricName, List<String> aliases,
+			MetricServiceStatus status) {
+		MetricDefinition definition = MetricDefinition.builder()
+			.metricKey(metricKey)
+			.metricCode(metricCode)
+			.metricName(metricName)
+			.aliases(aliases)
+			.description(metricName + "定义")
+			.build();
+		MetricApiContract contract = MetricApiContract.builder()
+			.operationId(metricKey + "Query")
+			.httpMethod("GET")
+			.path("/metrics/" + metricKey)
+			.build();
+		return new MetricCatalogEntry(definition, contract, new MetricBinding(metricKey, contract.operationId()), status,
+				false, "COMPLETED", null);
 	}
 
 }

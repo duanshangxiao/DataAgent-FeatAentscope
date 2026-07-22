@@ -78,42 +78,44 @@ class MetricQueryExecutionService {
 		if (!StringUtils.hasText(identifier)) {
 			throw new IllegalArgumentException("operationId 或 metricCode 不能为空。");
 		}
-		MetricDefinition definition = metricDefinitionLookup.get(identifier)
-			.orElseThrow(() -> new IllegalArgumentException("未找到指标接口定义：" + identifier));
-		PreparedMetricRequest preparedRequest = prepare(definition, request);
+		MetricCatalogEntry catalogEntry = metricDefinitionLookup.getOnlineEntry(identifier)
+			.orElseThrow(() -> new IllegalArgumentException("指标不存在或已下架：" + identifier));
+		MetricDefinition definition = catalogEntry.definition();
+		MetricApiContract contract = catalogEntry.contract();
+		PreparedMetricRequest preparedRequest = prepare(contract, request);
 		if (!preparedRequest.readyToExecute()) {
-			return buildClarificationResult(definition, preparedRequest);
+			return buildClarificationResult(definition, contract, preparedRequest);
 		}
 		if (!circuitBreaker.allowRequest()) {
-			log.warn("Metric circuit breaker blocked request. apiId={}", definition.apiId());
-			return buildCircuitBreakerResult(definition, preparedRequest);
+			log.warn("Metric circuit breaker blocked request. apiId={}", contract.apiId());
+			return buildCircuitBreakerResult(contract, preparedRequest);
 		}
-		log.info("Executing metric HTTP request. apiId={}, metricName={}, method={}, path={}, arguments={}",
-				definition.apiId(), definition.metricName(), definition.httpMethod(), definition.path(),
-				preparedRequest.arguments());
+		log.info("Executing metric HTTP request. apiId={}, metricName={}, method={}, path={}, argumentKeys={}",
+				contract.apiId(), definition.metricName(), contract.httpMethod(), contract.path(),
+				preparedRequest.arguments().keySet());
 		long startTime = System.currentTimeMillis();
 		try {
-			JsonNode response = executeHttp(definition, preparedRequest);
+			JsonNode response = executeHttp(contract, preparedRequest);
 			circuitBreaker.recordSuccess();
 			long costMs = System.currentTimeMillis() - startTime;
-			MetricQueryResult result = normalize(definition, response, costMs, preparedRequest.arguments());
+			MetricQueryResult result = normalize(definition, contract, response, costMs, preparedRequest.arguments());
 			log.info("Metric query execute success. apiId={}, costMs={}ms, rowCount={}",
-					definition.apiId(), costMs, result.rows() != null ? result.rows().size() : 0);
+					contract.apiId(), costMs, result.rows() != null ? result.rows().size() : 0);
 			return result;
 		}
 		catch (Exception ex) {
 			circuitBreaker.recordFailure();
-			log.warn("Metric query execution failed, returning FALLBACK_TO_DB. apiId={}", definition.apiId(), ex);
-			return buildFallbackResult(definition, preparedRequest, ex);
+			log.warn("Metric query execution failed, returning FALLBACK_TO_DB. apiId={}", contract.apiId(), ex);
+			return buildFallbackResult(contract, preparedRequest, ex);
 		}
 	}
 
-	private MetricQueryResult buildFallbackResult(MetricDefinition definition,
+	private MetricQueryResult buildFallbackResult(MetricApiContract contract,
 			PreparedMetricRequest preparedRequest, Exception ex) {
 		Map<String, Object> metadata = new LinkedHashMap<>();
 		metadata.put("sourceType", "metric-system");
 		metadata.put("status", "HTTP_ERROR");
-		metadata.put("apiId", definition.apiId());
+		metadata.put("apiId", contract.apiId());
 		metadata.put("error", ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName());
 		return MetricQueryResult.builder()
 			.status("FALLBACK_TO_DB")
@@ -122,12 +124,12 @@ class MetricQueryExecutionService {
 			.build();
 	}
 
-	private MetricQueryResult buildCircuitBreakerResult(MetricDefinition definition,
+	private MetricQueryResult buildCircuitBreakerResult(MetricApiContract contract,
 			PreparedMetricRequest preparedRequest) {
 		Map<String, Object> metadata = new LinkedHashMap<>();
 		metadata.put("sourceType", "metric-system");
 		metadata.put("status", "CIRCUIT_OPEN");
-		metadata.put("apiId", definition.apiId());
+		metadata.put("apiId", contract.apiId());
 		metadata.put("circuitBreakerState", circuitBreaker.getState().name());
 		return MetricQueryResult.builder()
 			.status("FALLBACK_TO_DB")
@@ -136,14 +138,14 @@ class MetricQueryExecutionService {
 			.build();
 	}
 
-	private PreparedMetricRequest prepare(MetricDefinition definition, MetricQueryRequest request) {
+	private PreparedMetricRequest prepare(MetricApiContract contract, MetricQueryRequest request) {
 		Map<String, Object> arguments = new LinkedHashMap<>();
 		if (request != null && request.getArguments() != null) {
 			arguments.putAll(request.getArguments());
 		}
 		mergeLegacyArguments(arguments, request);
-		mergeInferredArguments(arguments, definition, request == null ? "" : request.getQuery());
-		List<MetricApiParameter> missingRequired = definition.requiredParameters()
+		mergeInferredArguments(arguments, contract, request == null ? "" : request.getQuery());
+		List<MetricApiParameter> missingRequired = contract.requiredParameters()
 			.stream()
 			.filter(parameter -> !hasArgumentValue(arguments, parameter))
 			.toList();
@@ -184,8 +186,8 @@ class MetricQueryExecutionService {
 		}
 	}
 
-	private void mergeInferredArguments(Map<String, Object> arguments, MetricDefinition definition, String query) {
-		for (MetricApiParameter parameter : definition.requestParameters()) {
+	private void mergeInferredArguments(Map<String, Object> arguments, MetricApiContract contract, String query) {
+		for (MetricApiParameter parameter : contract.requestParameters()) {
 			if (hasArgumentValue(arguments, parameter)) {
 				continue;
 			}
@@ -341,7 +343,7 @@ class MetricQueryExecutionService {
 		}
 	}
 
-	private MetricQueryResult buildClarificationResult(MetricDefinition definition,
+	private MetricQueryResult buildClarificationResult(MetricDefinition definition, MetricApiContract contract,
 			PreparedMetricRequest preparedRequest) {
 		List<MetricRequiredParameter> missingRequiredParameters = preparedRequest.missingRequiredParameters()
 			.stream()
@@ -353,14 +355,14 @@ class MetricQueryExecutionService {
 				.enumValues(parameter.enumValues())
 				.build())
 			.toList();
-		String clarificationMessage = "要查询接口 `%s`，还需要补充：%s。".formatted(definition.apiId(),
+		String clarificationMessage = "要查询接口 `%s`，还需要补充：%s。".formatted(contract.apiId(),
 				missingRequiredParameters.stream().map(MetricRequiredParameter::name).toList());
 		Map<String, Object> metadata = new LinkedHashMap<>();
 		metadata.put("sourceType", "metric-system");
-		metadata.put("apiId", definition.apiId());
-		metadata.put("operationId", definition.operationId());
-		metadata.put("path", definition.path());
-		metadata.put("httpMethod", definition.httpMethod());
+		metadata.put("apiId", contract.apiId());
+		metadata.put("operationId", contract.operationId());
+		metadata.put("path", contract.path());
+		metadata.put("httpMethod", contract.httpMethod());
 		metadata.put("providedArguments", preparedRequest.arguments());
 		return MetricQueryResult.builder()
 			.status("NEED_CLARIFICATION")
@@ -371,26 +373,26 @@ class MetricQueryExecutionService {
 			.build();
 	}
 
-	private JsonNode executeHttp(MetricDefinition definition, PreparedMetricRequest preparedRequest) {
+	private JsonNode executeHttp(MetricApiContract contract, PreparedMetricRequest preparedRequest) {
 		if (!StringUtils.hasText(properties.getBaseUrl())) {
 			throw new IllegalStateException("指标系统 baseUrl 未配置。");
 		}
 		try {
-			HttpMethod httpMethod = HttpMethod.valueOf(definition.httpMethod());
+			HttpMethod httpMethod = HttpMethod.valueOf(contract.httpMethod());
 			Map<String, Object> arguments = preparedRequest.arguments();
-			String resolvedPath = resolvePath(definition.path(), definition.requestParameters(), arguments);
-			ObjectNode requestBody = buildRequestBody(definition, arguments);
+			String resolvedPath = resolvePath(contract.path(), contract.requestParameters(), arguments);
+			ObjectNode requestBody = buildRequestBody(contract, arguments);
 			var bodyUriSpec = webClient.method(httpMethod).uri(uriBuilder -> {
 				uriBuilder.path(resolvedPath);
-				appendQueryParams(uriBuilder, definition, arguments);
+				appendQueryParams(uriBuilder, contract, arguments);
 				return uriBuilder.build();
 			});
 			var requestSpec = bodyUriSpec
-				.headers(httpHeaders -> appendHeaders(httpHeaders, definition, arguments));
+				.headers(httpHeaders -> appendHeaders(httpHeaders, contract, arguments));
 			WebClient.RequestHeadersSpec<?> headersSpec = httpMethod == HttpMethod.GET ? requestSpec
 					: requestSpec.bodyValue(requestBody);
 			log.info("Calling metric system endpoint. baseUrl={}, path={}, apiId={}, params={}, body={}",
-					properties.getBaseUrl(), resolvedPath, definition.apiId(), arguments, requestBody);
+					properties.getBaseUrl(), resolvedPath, contract.apiId(), arguments.keySet(), requestBody.size());
 			String body = headersSpec.retrieve()
 				.bodyToMono(String.class)
 				.timeout(Duration.ofMillis(properties.getTimeoutMs()))
@@ -416,9 +418,9 @@ class MetricQueryExecutionService {
 		return resolvedPath;
 	}
 
-	private void appendQueryParams(org.springframework.web.util.UriBuilder uriBuilder, MetricDefinition definition,
+	private void appendQueryParams(org.springframework.web.util.UriBuilder uriBuilder, MetricApiContract contract,
 			Map<String, Object> arguments) {
-		for (MetricApiParameter parameter : definition.requestParameters()) {
+		for (MetricApiParameter parameter : contract.requestParameters()) {
 			if (!"query".equalsIgnoreCase(parameter.location())) {
 				continue;
 			}
@@ -435,9 +437,9 @@ class MetricQueryExecutionService {
 		}
 	}
 
-	private void appendHeaders(org.springframework.http.HttpHeaders httpHeaders, MetricDefinition definition,
+	private void appendHeaders(org.springframework.http.HttpHeaders httpHeaders, MetricApiContract contract,
 			Map<String, Object> arguments) {
-		for (MetricApiParameter parameter : definition.requestParameters()) {
+		for (MetricApiParameter parameter : contract.requestParameters()) {
 			if (!"header".equalsIgnoreCase(parameter.location())) {
 				continue;
 			}
@@ -448,9 +450,9 @@ class MetricQueryExecutionService {
 		}
 	}
 
-	private ObjectNode buildRequestBody(MetricDefinition definition, Map<String, Object> arguments) {
+	private ObjectNode buildRequestBody(MetricApiContract contract, Map<String, Object> arguments) {
 		ObjectNode body = objectMapper.createObjectNode();
-		for (MetricApiParameter parameter : definition.requestParameters()) {
+		for (MetricApiParameter parameter : contract.requestParameters()) {
 			if (!"body".equalsIgnoreCase(parameter.location())) {
 				continue;
 			}
@@ -479,15 +481,15 @@ class MetricQueryExecutionService {
 		current.set(segments[segments.length - 1], objectMapper.valueToTree(value));
 	}
 
-	private MetricQueryResult normalize(MetricDefinition definition, JsonNode response, long costMs,
+	private MetricQueryResult normalize(MetricDefinition definition, MetricApiContract contract, JsonNode response, long costMs,
 			Map<String, Object> arguments) {
 		List<Map<String, Object>> rows = extractRows(response);
 		List<MetricQueryResult.Column> columns = extractColumns(rows);
 		Map<String, Object> metadata = new LinkedHashMap<>();
 		metadata.put("sourceType", "metric-system");
 		metadata.put("status", "SUCCESS");
-		metadata.put("apiId", definition.apiId());
-		metadata.put("operationId", definition.operationId());
+		metadata.put("apiId", contract.apiId());
+		metadata.put("operationId", contract.operationId());
 		metadata.put("metricCode", definition.metricCode());
 		metadata.put("metricName", definition.metricName());
 		metadata.put("requestArguments", arguments);

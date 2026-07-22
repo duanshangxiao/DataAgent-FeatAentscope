@@ -17,20 +17,15 @@ package com.alibaba.cloud.ai.dataagent.capability.metric;
 
 import com.alibaba.cloud.ai.dataagent.agentscope.dto.AgentRequest;
 import com.alibaba.cloud.ai.dataagent.agentscope.runtime.ToolContextRequestResolver;
-import com.alibaba.cloud.ai.dataagent.constant.Constant;
-import com.alibaba.cloud.ai.dataagent.constant.DocumentMetadataConstant;
 import com.alibaba.cloud.ai.dataagent.observability.AnswerTraceExplainStore;
-import com.alibaba.cloud.ai.dataagent.service.vectorstore.AgentVectorStoreService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ToolContext;
-import org.springframework.ai.document.Document;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -137,9 +132,7 @@ class MetricToolProvider {
 
 	private static final int DEFAULT_SEARCH_LIMIT = 5;
 
-	private static final double METRIC_SEARCH_THRESHOLD = 0.4D;
-
-	private final AgentVectorStoreService agentVectorStoreService;
+	private final MetricRetrievalService metricRetrievalService;
 
 	private final MetricDefinitionLookup metricDefinitionLookup;
 
@@ -189,39 +182,20 @@ class MetricToolProvider {
 						: objectMapper.createObjectNode();
 				String query = input.path("query").asText();
 				int limit = input.path("limit").asInt(DEFAULT_SEARCH_LIMIT);
-				log.info("Metric catalog search invoked via PGVector. query={}, limit={}", query, limit);
-				List<Document> documents = agentVectorStoreService.getDocumentsForAgent(
-						Constant.METRIC_GLOBAL_AGENT_ID, query, DocumentMetadataConstant.METRIC,
-						Math.max(limit, DEFAULT_SEARCH_LIMIT), METRIC_SEARCH_THRESHOLD);
-				Map<String, Object> result = new LinkedHashMap<>();
-				result.put("summary", "共匹配到 %d 个候选指标接口".formatted(documents.size()));
-				List<Map<String, Object>> candidates = new ArrayList<>();
-				for (Document document : documents) {
-					Map<String, Object> item = new LinkedHashMap<>();
-					item.put("metricCode", document.getMetadata().get(DocumentMetadataConstant.METRIC_CODE));
-					item.put("operationId", document.getMetadata().get(DocumentMetadataConstant.OPERATION_ID));
-					item.put("apiId", document.getMetadata().get(DocumentMetadataConstant.OPERATION_ID));
-					item.put("content", document.getText());
-					item.put("score", document.getScore());
-					Object params = document.getMetadata().get("requestParameters");
-					if (params != null) {
-						item.put("requestParameters", params);
-					}
-					candidates.add(item);
-				}
-				result.put("candidates", candidates);
-				log.info("Metric catalog search completed via PGVector. query={}, matchedCount={}",
-						query, candidates.size());
 				AgentRequest agentRequest = ToolContextRequestResolver.resolveGraphRequest(toolContext);
-				List<String> apiIds = candidates.stream()
-					.map(c -> (String) c.get("apiId"))
+				String agentId = agentRequest == null ? null : agentRequest.getAgentId();
+				MetricSearchResult result = metricRetrievalService
+					.search(new MetricSearchCommand(query, agentId, limit));
+				List<String> apiIds = result.candidates()
+					.stream()
+					.map(MetricSearchResult.Candidate::operationId)
 					.toList();
 				answerTraceExplainStore.recordMetricCatalogSearch(agentRequest, query,
-						(String) result.get("summary"), apiIds);
+						result.summary(), apiIds);
 				return objectMapper.writeValueAsString(result);
 			}
 			catch (Exception ex) {
-				log.warn("Metric catalog search failed. toolInput={}", toolInput, ex);
+				log.warn("Metric catalog search failed. toolInputLength={}", inputLength(toolInput), ex);
 				throw new IllegalStateException("指标目录检索失败：" + ex.getMessage(), ex);
 			}
 		}
@@ -254,12 +228,12 @@ class MetricToolProvider {
 				String identifier = pickIdentifier(input.path("operationId").asText(),
 						input.path("metricCode").asText());
 				log.info("Metric catalog describe invoked. identifier={}", identifier);
-				MetricDefinition definition = metricDefinitionLookup.get(identifier)
+				MetricCatalogEntry definition = metricDefinitionLookup.getOnlineEntry(identifier)
 					.orElseThrow(() -> new IllegalArgumentException("未找到指标接口定义：" + identifier));
 				return objectMapper.writeValueAsString(definition);
 			}
 			catch (Exception ex) {
-				log.warn("Metric catalog describe failed. toolInput={}", toolInput, ex);
+				log.warn("Metric catalog describe failed. toolInputLength={}", inputLength(toolInput), ex);
 				throw new IllegalStateException("读取指标接口定义失败：" + ex.getMessage(), ex);
 			}
 		}
@@ -289,8 +263,9 @@ class MetricToolProvider {
 			try {
 				MetricQueryRequest request = objectMapper.readValue(toolInput, MetricQueryRequest.class);
 				AgentRequest agentRequest = ToolContextRequestResolver.resolveGraphRequest(toolContext);
-				log.info("Metric query execute invoked. operationId={}, query={}, arguments={}, threadId={}",
-						request.getOperationId(), request.getQuery(), request.getArguments(),
+				log.info("Metric query execute invoked. operationId={}, queryLength={}, argumentKeys={}, threadId={}",
+						request.getOperationId(), inputLength(request.getQuery()),
+						request.getArguments() == null ? List.of() : request.getArguments().keySet(),
 						agentRequest != null ? agentRequest.getThreadId() : "N/A");
 				MetricQueryResult result = metricQueryExecutionService.execute(request);
 				log.info("Metric query execute completed. identifier={}, status={}, summary={}, rowCount={}",
@@ -301,11 +276,15 @@ class MetricToolProvider {
 				return objectMapper.writeValueAsString(result);
 			}
 			catch (Exception ex) {
-				log.warn("Metric query execute failed. toolInput={}", toolInput, ex);
+				log.warn("Metric query execute failed. toolInputLength={}", inputLength(toolInput), ex);
 				throw new IllegalStateException("指标查询失败：" + ex.getMessage(), ex);
 			}
 		}
 
+	}
+
+	private static int inputLength(String input) {
+		return input == null ? 0 : input.length();
 	}
 
 }
