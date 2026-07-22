@@ -7,6 +7,10 @@
 - 后端：`data-agent-management`（Java 17、Spring Boot、WebFlux、MyBatis）
 - 前端：`data-agent-frontend`（Vue 3、TypeScript、Vite、Element Plus）
 - 架构：`docs/ARCHITECTURE.md`
+- 配置：`docs/CONFIGURATION.md`
+- 部署：`docs/DEPLOYMENT.md`
+- 升级：`docs/UPGRADE.md`
+- API 与 SSE：`docs/API_AND_SSE.md`
 - 当前状态：`docs/todolist.md`
 - 历史事故与根因：`docs/LESSONS.md`
 - 开发规范：`docs/DEVELOPER_GUIDE.md`、`CONTRIBUTING-zh.md`
@@ -120,6 +124,8 @@
 - 同类问题重复出现时，优先用测试、lint、脚本或类型约束进行工程化拦截；无法自动拦截的，再提炼为本文件中的简短检查项。
 - 新增、删除或重命名 AI 协作文档时，同步更新 `docs/VIBE_CODING.md`。
 - 任务专用上下文摘要放在任务文档或归档目录，不作为全仓库持久规则。
+- 项目说明只维护中文版本；不要重新引入需要人工同步的英文镜像。
+- `docs/duan/` 是早期 OpenCode 修复记录，只用于历史追溯；当前事实应写入正式专题文档。
 
 ## 6. 完成前检查
 

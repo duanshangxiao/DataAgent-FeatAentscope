@@ -1,470 +1,167 @@
-中文 | [English](./DEVELOPER_GUIDE-en.md)
+# 开发者指南
 
-# 开发者文档
+本文面向修改 DataAgent 代码的开发者，说明工程结构、开发流程和验证要求。首次运行请先完成[快速开始](QUICK_START.md)。
 
-欢迎参与 DataAgent 项目的开发！本文档将帮助您了解如何为项目做出贡献。
+## 1. 工程结构
 
-## 🚀 开发环境搭建
+```text
+DataAgent/
+├── data-agent-management/   # Java 17 / Spring Boot 后端
+├── data-agent-frontend/     # Vue 3 / TypeScript 前端
+├── agent-skills/            # 内置运行时技能
+├── docker-file/             # 本地 Docker 示例
+├── docs/                    # 当前项目说明与内部记录
+├── AGENTS.md                # AI 与开发者的稳定协作规则
+└── pom.xml                  # Maven 聚合入口
+```
 
-### 前置要求
+后端没有拆成多个部署服务。Controller、Service、Mapper、AgentScope 适配、capability 和工具提供者都位于 `data-agent-management`。
 
-- **JDK**: 17 或更高版本
-- **Maven**: 3.6 或更高版本
-- **Node.js**: 18（与 `.nvmrc` 和前端 CI 一致）
-- **MySQL**: 5.7 或更高版本
-- **Git**: 版本控制工具
-- **IDE**: IntelliJ IDEA 或 Eclipse (推荐 IntelliJ IDEA)
+## 2. 开发环境
 
-### 克隆项目
+- JDK 17
+- Node.js 18+
+- MySQL 8.0 推荐
+- Elasticsearch 8.18.0
+- Git
+- Docker，可选但推荐用于本地依赖和容器化测试
+
+后端使用仓库根目录 `./mvnw`，前端使用锁文件和 `npm ci`。环境变量见[配置参考](CONFIGURATION.md)。
+
+## 3. 当前核心链路
+
+对话主链路由 `AiAgentRuntimeServiceImpl` 编排：
+
+1. `DataAgentController` 接收 SSE 请求并验证 `agentId/threadId`。
+2. `AgentScopeMemoryFactory` 按 `threadId` 载入原生 memory。
+3. `CapabilityRoutingService` 选择数据库或指标混合路径。
+4. `AgentScopeToolkitFactory` 与 Agent 级工具目录组装工具。
+5. `CommonAgent` 创建 AgentScope `ReActAgent` 执行。
+6. Hook 把文本、工具调用和结果转换为 SSE。
+7. 完成后持久化 memory、回答解释和必要的会话数据。
+
+历史 StateGraph 节点流水线不是当前主链路。完整关系见[架构说明](ARCHITECTURE.md)。
+
+## 4. 修改前定位完整调用链
+
+跨层需求至少检查：
+
+- Controller 与请求 DTO。
+- Service 和运行时编排。
+- Mapper、SQL 与真实数据落点。
+- 前端 service、组件参数、保存和编辑回填。
+- SSE 实时展示与刷新后的历史展示。
+
+修改消息类型时，同时检查 UI 可见性、memory eligibility、`ChatMessageMapper`、`ChatMessageService` 和前端渲染。修改停止/取消时，同时验证断开 SSE、后端运行停止或副作用抑制、memory 不发生脏回写。
+
+## 5. 后端开发与验证
+
+### 编译
+
+Java 改动至少执行：
 
 ```bash
-git clone https://github.com/your-org/spring-ai-alibaba-data-agent.git
-cd spring-ai-alibaba-data-agent
+./mvnw -pl data-agent-management -am -DskipTests compile
 ```
 
-### 后端开发环境
+### 测试
 
-1. **导入项目到 IDE**
-   - 使用 IntelliJ IDEA 打开项目根目录
-   - IDE 会自动识别为 Maven 项目并下载依赖
+运行后端测试：
 
-2. **配置数据库**
-   - 创建 MySQL 数据库
-   - 修改 `data-agent-management/src/main/resources/application.yml` 中的数据库配置
-
-3. **启动后端服务**
-   ```bash
-   cd data-agent-management
-   ./mvnw spring-boot:run
-   ```
-
-### 前端开发环境
-
-1. **安装依赖**
-   ```bash
-   cd data-agent-frontend
-   npm install
-   ```
-
-2. **启动开发服务器**
-   ```bash
-   npm run dev
-   ```
-
-3. **访问应用**
-   - 打开浏览器访问 http://localhost:3000
-
-
-
-## 🔧 核心模块说明
-
-### 1. AgentScope ReActAgent 运行时
-
-当前对话主链路由 `AiAgentRuntimeServiceImpl` 编排，使用 `CommonAgent` 创建 AgentScope `ReActAgent`。运行时根据 Agent 绑定关系动态装配数据源探索、语义模型、业务知识、SQL 安全和本地技能工具；`CapabilityRoutingService` 决定数据库或指标混合路径，并注入对应规则。
-
-历史 StateGraph 节点流水线不再是当前对话主链路。修改运行行为时应优先检查运行时服务、能力路由、工具目录、Hook/SSE 事件和 AgentScope memory。
-
-### 2. 多模型调度
-
-通过 `AiModelRegistry` 实现多模型管理和热切换：
-
-```java
-@Service
-public class AiModelRegistry {
-    private ChatModel currentChatModel;
-    private EmbeddingModel currentEmbeddingModel;
-    
-    public void refreshChatModel(ModelConfig config) {
-        // 动态创建和切换 Chat 模型
-    }
-    
-    public void refreshEmbeddingModel(ModelConfig config) {
-        // 动态创建和切换 Embedding 模型
-    }
-}
+```bash
+./mvnw -pl data-agent-management -am test
 ```
 
-### 3. 向量检索服务
+可使用 `-Dtest=ClassName#methodName` 运行针对性测试。修改业务行为应补充最小回归测试；数据库行为不能只依赖 H2 判断，MySQL schema 或兼容性变化必须在真实 MySQL 或 Testcontainers 中验证。
 
-`AgentVectorStoreService` 提供统一的向量检索接口：
+### Spring 容器启动
 
-```java
-@Service
-public class AgentVectorStoreService {
-    public List<Document> retrieve(String query, 
-                                   String agentId, 
-                                   VectorType vectorType) {
-        // 向量检索逻辑
-    }
-}
+修改 Bean 构造器、注入关系、配置属性、`@Bean`、`@Scheduled`、`@Async` 或事件监听后，编译通过仍不够。需要启动应用并确认：
+
+- 出现 `Started DataAgentApplication`。
+- 没有循环依赖和 Bean 初始化错误。
+- 外部数据库、ES 或模型服务失败与 Spring 容器自身失败被正确区分。
+
+## 6. 前端开发与验证
+
+安装依赖：
+
+```bash
+cd data-agent-frontend
+npm ci
 ```
 
-## 🎨 编码规范
+逻辑改动按范围执行：
 
-> AI agent 编码时还应遵循 `AGENTS.md` 中的约束和禁止事项，以及 `CONTRIBUTING-zh.md` 中的 Spring 代码格式要求。
-
-### Java 编码规范
-
-1. **命名规范**
-   - 类名：大驼峰命名法 (PascalCase)
-   - 方法名：小驼峰命名法 (camelCase)
-   - 常量：全大写下划线分隔 (UPPER_SNAKE_CASE)
-
-2. **注释规范**
-   - 所有公共类和方法必须有 JavaDoc 注释
-   - 复杂逻辑需要添加行内注释
-
-3. **代码格式**
-   - 使用 4 个空格缩进
-   - 每行代码不超过 120 字符
-   - 使用 Google Java Style Guide
-
-### TypeScript 编码规范
-
-1. **命名规范**
-   - 组件名：大驼峰命名法
-   - 变量/函数：小驼峰命名法
-   - 接口：I 前缀 + 大驼峰命名法
-
-2. **类型定义**
-   - 优先使用 interface 而非 type
-   - 避免使用 any 类型
-   - 为所有函数参数和返回值添加类型
-
-3. **代码格式**
-   - 使用 2 个空格缩进
-   - 使用 Prettier 格式化代码
-   - 使用 ESLint 检查代码质量
-
-## ⚙️ 开发配置手册
-
-本项目的所有配置项均位于 `spring.ai.alibaba.data-agent` 前缀下。
-
-### 1. 通用配置
-
-| 配置项                                                    | 说明 | 默认值    |
-|--------------------------------------------------------|------|--------|
-| `spring.ai.alibaba.data-agent.llm-service-type`        | LLM服务类型 (STREAM/BLOCK) | STREAM |
-| `spring.ai.alibaba.data-agent.max-sql-retry-count`     | SQL执行失败重试次数 | 10     |
-| `spring.ai.alibaba.data-agent.max-sql-optimize-count`  | SQL优化最多次数 | 10     |
-| `spring.ai.alibaba.data-agent.sql-score-threshold`     | SQL优化分数阈值 | 0.95   |
-| `spring.ai.alibaba.data-agent.maxturnhistory`          | 最多保留的对话轮数 | 5      |
-| `spring.ai.alibaba.data-agent.maxplanlength`           | 单次规划最大长度限制 | 2000   |
-| `spring.ai.alibaba.data-agent.max-columns-per-table`   | 每张表的最大预估列数 | 50     |
-| `spring.ai.alibaba.data-agent.fusion-strategy`         | 多路召回结果融合策略 | rrf    |
-| `spring.ai.alibaba.data-agent.enable-sql-result-chart` | 是否启用SQL执行结果图表判断 | true   |
-| `spring.ai.alibaba.data-agent.enrich-sql-result-timeout` | 执行SQL结果图表化超时时间，单位毫秒 | 3000   |
-
-### 2. 嵌入模型批处理策略 (Embedding Batch)
-
-配置前缀: `spring.ai.alibaba.data-agent.embedding-batch`
-
-| 配置项 | 说明 | 默认值 |
-|--------|------|--------|
-| `encoding-type` | 文本编码类型 (参考 com.knuddels.jtokkit.api.EncodingType) | cl100k_base |
-| `max-token-count` | 每批次最大令牌数。建议值：2000-8000 | 8000 |
-| `reserve-percentage` | 预留百分比 (用于缓冲空间) | 0.2 |
-| `max-text-count` | 每批次最大文本数量 (DashScope限制为10) | 10 |
-
-### 3. 向量库配置 (Vector Store)
-
-配置前缀: `spring.ai.alibaba.data-agent.vector-store`
-
-| 配置项 | 说明 | 默认值 |
-|--------|------|--------|
-| `default-similarity-threshold` | 全局默认相似度阈值 | 0.4 |
-| `table-similarity-threshold` | 召回表的相似度阈值 | 0.2 |
-| `batch-del-topk-limit` | 批量删除时的最大文档数量 | 5000 |
-| `default-topk-limit` | 全局默认查询返回的最大文档数量（目前只有业务知识和智能体知识在使用） | 8 |
-| `table-topk-limit` | 召回表的最大文档数量 | 10 |
-| `enable-hybrid-search` | 是否启用混合搜索 | false |
-| `elasticsearch-min-score` | ES关键词搜索的最小分数阈值 | 0.5 |
-
-#### 向量库依赖扩展
-
-项目默认使用内存向量库 (`SimpleVectorStore`)。若需使用持久化向量库（如 PGVector, Milvus 等），请按照以下步骤操作：
-
-1. **引入依赖**: 在 `pom.xml` 中添加相应的 Spring AI Starter。
-   
-   ```xml
-   <!-- 例如：引入 PGvector -->
-   <dependency>
-       <groupId>org.springframework.ai</groupId>
-       <artifactId>spring-ai-starter-vector-store-pgvector</artifactId>
-   </dependency>
-   ```
-   
-2. **配置属性**: 在 `application.yml` 中添加对应向量库的连接配置。具体参数请参考 [Spring AI 官方文档](https://springdoc.cn/spring-ai/api/vectordbs.html)。
-
-2. **配置 `spring.ai.vectorstore.type`**。具体填写的值可以在引入上面的向量库starter后自行搜索 `VectorStoreAutoConfiguration`自动配置类，比如`es`的是`ElasticsearchVectorStoreAutoConfiguration`，该类里面可以看见`spring.ai.vectorstore.type`期望的是`elasticsearch`。
-
-
-#### ES Schema 配置示例
-以下为 Elasticsearch 的 Schema 结构。其他向量库（如 Milvus, PGVector）可参考此结构建立 Schema，尤其要注意 `metadata` 中的字段数据类型。
-
-```json
-{
-  "mappings": {
-    "properties": {
-      "content": {
-        "type": "text",
-        "fields": {
-          "keyword": {
-            "type": "keyword",
-            "ignore_above": 256
-          }
-        }
-      },
-      "embedding": {
-        "type": "dense_vector",
-        "dims": 1024,
-        "index": true,
-        "similarity": "cosine",
-        "index_options": {
-          "type": "int8_hnsw",
-          "m": 16,
-          "ef_construction": 100
-        }
-      },
-      "id": {
-        "type": "text",
-        "fields": {
-          "keyword": {
-            "type": "keyword",
-            "ignore_above": 256
-          }
-        }
-      },
-      "metadata": {
-        "properties": {
-          "agentId": {
-            "type": "text",
-            "fields": {
-              "keyword": {
-                "type": "keyword",
-                "ignore_above": 256
-              }
-            }
-          },
-          "agentKnowledgeId": {
-            "type": "long"
-          },
-          "businessTermId": {
-            "type": "long"
-          },
-          "concreteAgentKnowledgeType": {
-            "type": "text",
-            "fields": {
-              "keyword": {
-                "type": "keyword",
-                "ignore_above": 256
-              }
-            }
-          },
-          "vectorType": {
-            "type": "text",
-            "fields": {
-              "keyword": {
-                "type": "keyword",
-                "ignore_above": 256
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
+```bash
+npm run type-check
+npm run lint:check
+npm run build
 ```
 
-### 4. 文本切分配置 (Text Splitter)
+提交前还应根据改动范围执行：
 
-配置前缀: `spring.ai.alibaba.data-agent.text-splitter`
+```bash
+npm run format:check
+npm run unused
+```
 
-#### 4.1 全局配置
+不要用 `npm run lint` 或 `npm run format` 顺手改写大量无关文件。
 
-| 配置项 | 说明 | 默认值 |
-|--------|------|--------|
-| `chunk-size` | 默认分块大小（基于token数量，所有策略共享） | 1000 |
+CSS、条件渲染、流式展示和交互状态不能只靠构建验证。至少在真实页面检查：
 
-#### 4.2 TokenTextSplitter 配置 (token)
+- 实时流式阶段。
+- 流结束后的静默状态。
+- 刷新后的历史展示。
+- 明暗主题下的文字和背景对比度。
+- 表单的 disabled、checked、保存回填和 reload 行为。
 
-配置前缀: `spring.ai.alibaba.data-agent.text-splitter.token`
+前端详细风格见 `data-agent-frontend/README-CODE-STYLE.md`。
 
-基于 Token 数量的文本切分策略，适用于需要精确控制 token 数量的场景。
+## 7. 数据库变更
 
-| 配置项 | 说明 | 默认值 |
-|--------|------|--------|
-| `min-chunk-size-chars` | 最小分块字符数 | 400 |
-| `min-chunk-length-to-embed` | 嵌入最小分块长度 | 10 |
-| `max-num-chunks` | 最大分块数量 | 5000 |
-| `keep-separator` | 是否保留分隔符 | true |
+应用不会运行自动 migration。MySQL schema 变更至少同步：
 
-#### 4.3 RecursiveCharacterTextSplitter 配置 (recursive)
+- `data-agent-management/src/main/resources/sql/schema.sql`
+- `data-agent-management/src/test/resources/sql/schema.sql`
 
-配置前缀: `spring.ai.alibaba.data-agent.text-splitter.recursive`
+涉及 H2 测试时再同步 `src/main/resources/sql/h2/` 对应文件。旧库需要执行的增量 DDL 必须写入[升级说明](UPGRADE.md)或对应专题升级章节。
 
-递归字符文本切分策略，按照字符顺序递归尝试不同的分隔符进行切分。
+未经明确授权，不直接修改共享或生产数据库。
 
-| 配置项 | 说明 | 默认值 |
-|--------|------|--------|
-| `chunk-overlap` | 重叠区域字符数（相邻分块之间的重叠字符数） | 200 |
-| `separators` | 自定义分隔符列表（数组格式，如果为 null 则使用默认分隔符列表） | null |
+## 8. Prompt、Agent 和技能
 
-#### 4.4 SentenceTextSplitter 配置 (sentence)
+- 业务侧默认只保留 `agentType=commonagent`。
+- 系统提示词默认只保留 `promptType=system`。
+- 不把 `scene` 恢复为 Prompt 配置维度。
+- 外部兼容值进入核心路径后应收敛为 `commonagent/system`。
 
-配置前缀: `spring.ai.alibaba.data-agent.text-splitter.sentence`
+运行时系统提示词位于 `data-agent-management/src/main/resources/prompts/`，内置技能位于 `agent-skills/`。修改后需要验证模型实际工具选择和输出，不只检查 Markdown 格式。
 
-基于句子的文本切分策略，按照句子边界进行切分，适合处理自然语言文本。
+## 9. API 与流式修改
 
-| 配置项 | 说明 | 默认值 |
-|--------|------|--------|
-| `sentence-overlap` | 句子重叠数量（保留前一个分块的最后 N 个句子） | 1 |
+普通 REST 字段以 `/v3/api-docs` 为准。SSE 的事件、标识和取消语义见 [API 与 SSE](API_AND_SSE.md)。
 
-#### 4.5 SemanticTextSplitter 配置 (semantic)
+修改结构化工具结果时，数据库应保存可反序列化的原始结构，不应先降级为 HTML。任何多方消费的格式化函数都要列出“调用者 → 函数 → 数据落点”，分别判断实时和历史影响。
 
-配置前缀: `spring.ai.alibaba.data-agent.text-splitter.semantic`
+## 10. 文档维护
 
-基于语义相似度的文本切分策略，通过 Embedding 模型计算语义相似度来决定切分点，能够保持语义完整性。
+- README 只保留项目定位、快速入口和导航。
+- `CONFIGURATION.md` 是环境变量和配置的唯一完整入口。
+- `ARCHITECTURE.md` 只记录当前架构事实。
+- `todolist.md` 记录当前路线图，不作为发布说明。
+- `LESSONS.md` 保存高价值历史根因，稳定规则再提炼到 `AGENTS.md`。
+- `docs/duan/` 是早期 OpenCode 修复记录，不作为当前事实来源。
+- 项目后续只维护中文说明，不再维护英文镜像。
 
-| 配置项 | 说明 | 默认值 |
-|--------|------|--------|
-| `min-chunk-size` | 最小分块大小（字符数） | 200 |
-| `max-chunk-size` | 最大分块大小（字符数） | 1000 |
-| `similarity-threshold` | 语义相似度阈值（0-1之间，值越低越容易分块） | 0.5 |
+文档与实现冲突时，以当前代码、测试和配置为准，并在当前任务范围修正文档漂移。
 
-#### 4.6 ParagraphTextSplitter 配置 (paragraph)
+## 11. 完成前检查
 
-配置前缀: `spring.ai.alibaba.data-agent.text-splitter.paragraph`
-
-基于段落的文本切分策略，按照段落边界进行切分。
-
-| 配置项 | 说明 | 默认值 |
-|--------|------|--------|
-| `paragraph-overlap-chars` | 段落重叠字符数（保留前一个分块的最后 N 个字符，而非段落数量） | 200 |
-
-
-### 5. 代码执行器配置 (Code Executor)
-
-配置前缀: `spring.ai.alibaba.data-agent.code-executor`
-
-| 配置项 | 说明 | 默认值 |
-|--------|------|--------|
-| `code-pool-executor` | 执行器类型 (DOCKER/LOCAL) | DOCKER (application.yml中默认为local) |
-| `image-name` | Docker镜像名称 | continuumio/anaconda3:latest |
-| `container-name-prefix` | 容器名称前缀 | nl2sql-python-exec- |
-| `host` | 服务主机地址 | null |
-| `task-queue-size` | 任务阻塞队列大小 | 5 |
-| `core-container-num` | 核心容器数量最大值 | 2 |
-| `temp-container-num` | 临时容器数量最大值 | 2 |
-| `core-thread-size` | 线程池核心线程数 | 5 |
-| `max-thread-size` | 线程池最大线程数 | 5 |
-| `code-timeout` | Python代码执行超时时间 | 60s |
-| `container-timeout` | 容器最大运行时长 | 3000 (ms) |
-| `limit-memory` | 容器内存限制 (MB) | 500 |
-| `cpu-core` | 容器CPU核数 | 1 |
-
-### 6. 文件存储配置 (File Storage)
-
-配置前缀: `spring.ai.alibaba.data-agent.file`
-
-| 配置项 | 说明 | 默认值 |
-|--------|------|--------|
-| `type` | 存储类型 (LOCAL/OSS) | LOCAL |
-| `path` | 本地上传目录路径 | ./uploads |
-| `url-prefix` | 对外暴露的访问前缀 | /uploads |
-| `image-size` | 图片大小上限 (字节) | 2097152 (2MB) |
-| `path-prefix` | 对象存储路径前缀 | "" |
-
-### 7. 阿里云 OSS 配置 (OSS Storage)
-
-配置前缀: `spring.ai.alibaba.data-agent.file.oss`
-
-| 配置项 | 说明 | 默认值 |
-|--------|------|--------|
-| `access-key-id` | OSS 访问密钥 ID | - |
-| `access-key-secret` | OSS 访问密钥 Secret | - |
-| `endpoint` | OSS 端点地址 | - |
-| `bucket-name` | OSS 存储桶名称 | - |
-| `custom-domain` | 自定义域名 | - |
-
-
-### 8. 数据库初始化配置 (Database Initialization)
-
-配置前缀: `spring.sql.init`
-
-| 配置项 | 说明 | 默认值 | 备注 |
-|--------|------|--------|------|
-| `mode` | 初始化模式 (always/never) | always | "always"会每次启动执行schema.sql和data.sql，建议生产环境设为"never" |
-| `schema-locations` | 表结构脚本路径 | classpath:sql/schema.sql | |
-| `data-locations` | 数据脚本路径 | classpath:sql/data.sql | |
-
-### 9. 模型依赖手动管理 (Manual Model Dependency)
-
-如果您选择不使用 Spring AI Alibaba Starter 而是手动引入 OpenAI 或其他厂商的 Starter：
-- 请确保移除默认的 Starter 依赖，避免冲突。
-- 您可能需要手动配置 `ChatClient`, `ChatModel` 和 `EmbeddingModel` 的 Bean。
-
-### 10. 报告资源配置 (Report Resources)
-
-配置前缀: `spring.ai.alibaba.data-agent.report-template`
-
-| 配置项 | 说明 | 默认值 |
-|--------|------|--------|
-| `marked-url` | Marked.js 路径 (Markdown渲染库) | https://mirrors.sustech.edu.cn/cdnjs/ajax/libs/marked/12.0.0/marked.min.js |
-| `echarts-url` | ECharts 路径 (图表库) | https://mirrors.sustech.edu.cn/cdnjs/ajax/libs/echarts/5.5.0/echarts.min.js |
-
-### 11. Langfuse 可观测性配置 (Langfuse Observability)
-
-配置前缀: `spring.ai.alibaba.data-agent.langfuse`
-
-| 配置项 | 说明 | 默认值 |
-|--------|------|--------|
-| `enabled` | 是否启用 Langfuse 可观测性 | true |
-| `host` | Langfuse 服务地址（如 `https://cloud.langfuse.com` 或自部署地址） | - |
-| `public-key` | Langfuse 项目的 Public Key | - |
-| `secret-key` | Langfuse 项目的 Secret Key | - |
-
-对应环境变量: `LANGFUSE_ENABLED`、`LANGFUSE_HOST`、`LANGFUSE_PUBLIC_KEY`、`LANGFUSE_SECRET_KEY`
-
-> 详细使用说明请参考 [高级功能 - Langfuse 可观测性](ADVANCED_FEATURES.md#-langfuse-可观测性)。
-
-## 📚 学习资源
-
-### 官方文档
-
-- [Spring AI Alibaba 文档](https://springdoc.cn/spring-ai/)
-- [Spring Boot 文档](https://spring.io/projects/spring-boot)
-- [React 文档](https://react.dev/)
-- [TypeScript 文档](https://www.typescriptlang.org/)
-
-### 相关技术
-
-- AgentScope ReActAgent、能力路由与动态工具目录
-- MyBatis 数据访问框架
-- Vector Store 向量数据库
-- Server-Sent Events (SSE)
-
-## 🤝 贡献指南
-
-详细的贡献指南请参考 [CONTRIBUTING-zh.md](../CONTRIBUTING-zh.md)。
-
-### 贡献类型
-
-- 🐛 报告 Bug
-- 💡 提出新功能建议
-- 📝 改进文档
-- 🔧 提交代码修复
-- ✨ 开发新功能
-
-### 行为准则
-
-- 尊重所有贡献者
-- 保持友好和专业
-- 接受建设性批评
-- 关注项目目标
-
-
----
-
-感谢您对 DataAgent 项目的贡献！🎉
+- 改动范围是否最小且没有覆盖用户已有修改。
+- `commonagent/system` 产品约束是否保持。
+- Controller、Service、Mapper、SQL、前端与持久化是否闭环。
+- 实时流、取消、memory 和历史展示是否一致。
+- 验证是否与改动风险相称。
+- 是否留下临时脚本、调试输出、生成物或无关格式化。
+- 配置、部署、升级或 API 事实变化时，相关正式文档是否同步。

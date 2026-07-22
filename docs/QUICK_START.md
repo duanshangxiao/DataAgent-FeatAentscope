@@ -1,344 +1,145 @@
-中文 | [English](./QUICK_START-en.md)
-
 # 快速开始
 
-本文档将指导您完成 DataAgent 的安装、配置和首次运行。
+本指南目标是让开发者从空环境跑通一次本地问答。详细配置见[配置参考](CONFIGURATION.md)，生产或共享环境见[部署说明](DEPLOYMENT.md)。
 
-## 📋 环境要求
+## 1. 环境要求
 
-- **JDK**: 17 或更高版本
-- **MySQL**: 5.7 或更高版本
-- **Node.js**: 16 或更高版本
-- **Docker**: (可选) 用于Python代码执行
-- **向量数据库**: (可选) 默认使用内存向量库
+| 依赖 | 版本/建议 |
+|---|---|
+| JDK | 17 |
+| Node.js | 18+ |
+| MySQL | 推荐 8.0 |
+| Elasticsearch | 8.18.0，默认向量存储 |
+| Maven | 使用仓库根目录 `./mvnw` |
 
-## 🗄️ 1. 业务数据库准备
+Python 和 Docker 只在使用相应代码执行器或本地容器示例时需要。
 
-可以在项目仓库获取测试表和数据：
+## 2. 准备管理库
 
-文件在：`data-agent-management/src/main/resources/sql`，里面有4个文件：
-- `schema.sql` - 功能相关的表结构
-- `data.sql` - 功能相关的数据
-- `product_schema.sql` - 模拟数据表结构
-- `product_data.sql` - 模拟数据
-
-将表和数据导入到你的MySQL数据库中。
+创建一个本地 MySQL 数据库，然后在仓库根目录执行 schema：
 
 ```bash
-# 示例：使用 MySQL 命令行导入
-mysql -u root -p your_database < data-agent-management/src/main/resources/sql/schema.sql
-mysql -u root -p your_database < data-agent-management/src/main/resources/sql/data.sql
-mysql -u root -p your_database < data-agent-management/src/main/resources/sql/product_schema.sql
-mysql -u root -p your_database < data-agent-management/src/main/resources/sql/product_data.sql
+mysql -h 127.0.0.1 -P 3360 -u root -p \
+  feat-agentscope < data-agent-management/src/main/resources/sql/schema.sql
 ```
 
-## ⚙️ 2. 配置
-
-### 2.1 配置management数据库
-
-在`data-agent-management/src/main/resources/application.yml`中配置你的MySQL数据库连接信息。
-
-> 初始化行为说明：默认开启自动创建表并插入示例数据（`spring.sql.init.mode: always`）。生产环境建议关闭，避免示例数据回填覆盖你的业务数据。
-
-```yaml
-spring:
-  datasource:
-    url: jdbc:mysql://127.0.0.1:3306/saa_data_agent?useUnicode=true&characterEncoding=utf-8&zeroDateTimeBehavior=convertToNull&transformedBitIsBoolean=true&allowMultiQueries=true&allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=Asia/Shanghai
-    username: ${MYSQL_USERNAME:root}
-    password: ${MYSQL_PASSWORD:root}
-    driver-class-name: com.mysql.cj.jdbc.Driver
-    type: com.alibaba.druid.pool.DruidDataSource
-```
-
-### 2.2 数据初始化配置
-
-默认开启自动初始化 (`spring.sql.init.mode: always`)。
-
-> 关于如何关闭自动初始化，请参考 [开发者指南 - 数据库初始化配置](DEVELOPER_GUIDE.md#8-数据库初始化配置-database-initialization)。
-
-### 2.3 配置模型
-
-> 如果涉及手动管理模型依赖（非默认 Starter），请参考 [开发者指南 - 扩展依赖配置](DEVELOPER_GUIDE.md#9-扩展依赖配置-dependency-extension)。
-
-启动项目，点击模型配置，新增模型填写自己的apikey即可。
-
-![add-model.png](../img/add-model.png)
-
-1. 标准提供商接入 如果您使用的是系统内置支持的 AI 提供商（如 OpenAI, Deepseek 等），通常只需要提供模型名称（Model Name）和 API Key。
-
-2. 自定义及本地模型接入 (Ollama/自建网关) 本系统基于 Spring AI 架构，支持标准的 OpenAI 接口协议。如果您接入的是 Ollama 或其他自定义网关，请注意以下几点：
-
-	- 协议兼容：请参考 Spring AI 官方文档中关于 OpenAI 兼容性的说明，确保您的网关响应格式符合标准。
-
-	- 地址配置：针对自部署模型，请准确填写 base-url（基础地址）和 completions-path（请求路径）。系统会将两者拼接为完整的调用地址，例如：http://localhost:11434/v1/chat/completions
-
-3. 故障排查 如发现配置后无法调用，建议优先使用 Postman 对接您的接口地址进行测试，确认网络连通性及参数格式无误。
-
-
-### 2.4 嵌入模型批处理策略配置
-
-> 详细配置参数请参考 [开发者指南 - 开发配置手册](DEVELOPER_GUIDE.md#⚙️-开发配置手册)。
-
-### 2.5 向量库配置
-
-系统默认使用内存向量库，同时系统提供了对es的混合检索支持。
-
-#### 2.5.1 向量库依赖引入
-
-您可以自行引入你想要的持久化向量库，只需要往ioc容器提供一个org.springframework.ai.vectorstore.VectorStore类型的bean即可。例如直接引入PGvector的starter
-
-```xml
-<dependency>
-	<groupId>org.springframework.ai</groupId>
-	<artifactId>spring-ai-starter-vector-store-pgvector</artifactId>
-</dependency>
-```
-
-详细对应的向量库参考文档：https://springdoc.cn/spring-ai/api/vectordbs.html
-
-#### 2.5.2 向量库schema设置
-
-以下为es的schema结构，其他向量库如milvus，pg等自行可根据如下的es的结构建立自己的schema。尤其要注意metadata中的每个字段的数据类型。
-
-```json
-{
-  "mappings": {
-    "properties": {
-      "content": {
-        "type": "text",
-        "fields": {
-          "keyword": {
-            "type": "keyword",
-            "ignore_above": 256
-          }
-        }
-      },
-      "embedding": {
-        "type": "dense_vector",
-        "dims": 1024,
-        "index": true,
-        "similarity": "cosine",
-        "index_options": {
-          "type": "int8_hnsw",
-          "m": 16,
-          "ef_construction": 100
-        }
-      },
-      "id": {
-        "type": "text",
-        "fields": {
-          "keyword": {
-            "type": "keyword",
-            "ignore_above": 256
-          }
-        }
-      },
-      "metadata": {
-        "properties": {
-          "agentId": {
-            "type": "text",
-            "fields": {
-              "keyword": {
-                "type": "keyword",
-                "ignore_above": 256
-              }
-            }
-          },
-          "agentKnowledgeId": {
-            "type": "long"
-          },
-          "businessTermId": {
-            "type": "long"
-          },
-          "concreteAgentKnowledgeType": {
-            "type": "text",
-            "fields": {
-              "keyword": {
-                "type": "keyword",
-                "ignore_above": 256
-              }
-            }
-          },
-          "vectorType": {
-            "type": "text",
-            "fields": {
-              "keyword": {
-                "type": "keyword",
-                "ignore_above": 256
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-```
-
-#### 2.5.3 向量库配置参数
-
-> 详细配置参数请参考 [开发者指南 - 开发配置手册](DEVELOPER_GUIDE.md#⚙️-开发配置手册)。
-
-### 2.6 检索融合策略
-
-> 详细配置参数请参考 [开发者指南 - 开发配置手册](DEVELOPER_GUIDE.md#⚙️-开发配置手册)。
-
-### 2.7 替换vector-store的实现类
-
-> 关于如何替换默认的内存向量库（如使用 PGVector, Milvus 等），请参考 [开发者指南 - 扩展依赖配置](DEVELOPER_GUIDE.md#9-扩展依赖配置-dependency-extension)。
-
-## 🚀 3. 启动管理端
-
-在`data-agent-management`目录下，运行 `DataAgentApplication.java` 类。
+如果需要示例 Agent 和知识数据，再单独执行：
 
 ```bash
-cd data-agent-management
-./mvnw spring-boot:run
+mysql -h 127.0.0.1 -P 3360 -u root -p \
+  feat-agentscope < data-agent-management/src/main/resources/sql/data.sql
 ```
 
-或者在IDE中直接运行 `DataAgentApplication.java`。
+管理库保存 DataAgent 自身的 Agent、模型、会话和知识配置。用户实际查询的业务数据源需要在系统启动后通过管理页面另行添加。
 
-## 🌐 4. 启动WEB页面
+旧数据库不能只执行完整 schema 代替升级，请先阅读[升级说明](UPGRADE.md)。
 
-进入 `data-agent-frontend` 目录
+## 3. 准备 Elasticsearch
 
-### 4.1 安装依赖
+默认配置连接 `http://localhost:9200`。仓库提供本地开发示例：
 
 ```bash
-# 使用 npm
-npm install
-
-# 或使用 yarn
-yarn install
+docker compose -f docker-file/docker-compose-es.yml up -d
 ```
 
-### 4.2 启动服务
+该 Compose 包含开发者机器的绝对挂载路径，首次使用前必须按本机目录调整。确认服务可用：
 
 ```bash
-# 使用 npm
+curl -s http://localhost:9200/_cluster/health
+```
+
+详细设置、IK 中文分词插件和磁盘水位线见 [Elasticsearch 集成说明](ELASTICSEARCH.md)。
+
+## 4. 创建本地配置
+
+```bash
+cp .env.example .env
+```
+
+编辑 `.env`，至少填写：
+
+```dotenv
+DATA_AGENT_DATASOURCE_URL='jdbc:mysql://127.0.0.1:3360/feat-agentscope?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai'
+DATA_AGENT_DATASOURCE_USERNAME='root'
+DATA_AGENT_DATASOURCE_PASSWORD='你的本地密码'
+DATA_AGENT_DATASOURCE_SQL_INIT='never'
+SPRING_ELASTICSEARCH_URIS='http://127.0.0.1:9200'
+```
+
+`.env` 已被 Git 忽略，`.env.example` 只保存无密钥模板。Spring Boot 不会自动读取 `.env`，下一步必须加载它。
+
+## 5. 启动后端
+
+在仓库根目录执行：
+
+```bash
+set -a
+source .env
+set +a
+
+./mvnw -pl data-agent-management spring-boot:run
+```
+
+后端启动成功应看到 `Started DataAgentApplication`。随后访问：
+
+- `http://localhost:8065/v3/api-docs`
+- `http://localhost:8065/swagger-ui.html`
+
+如果使用 IntelliJ，运行 `DataAgentApplication` 前需要打开 `Run` → `Edit Configurations...`，在当前 Spring Boot/Application 配置的 `Environment variables` 中选择根目录 `.env`；只把文件放在项目根目录不会自动生效。完整步骤见[配置参考](CONFIGURATION.md#intellij-idea-加载方式)。
+
+## 6. 启动前端
+
+另开终端：
+
+```bash
+cd data-agent-frontend
+npm ci
 npm run dev
-
-# 或使用 yarn
-yarn dev
 ```
 
-启动成功后，访问地址 http://localhost:3000
+访问 `http://localhost:3000`。Vite 默认代理到 `http://localhost:8065`，需要修改时在启动前设置：
 
-## 🎯 5. 系统体验
+```bash
+export VITE_BACKEND_TARGET='http://127.0.0.1:8065'
+```
 
-### 5.1 数据智能体的创建与配置
+## 7. 配置模型并完成首次问答
 
-访问 http://localhost:3000 ，可以看到当前项目的智能体列表（默认有四个占位智能体，并没有对接数据，可以删除掉然后创建新的智能体）
+1. 打开“模型配置”，新增 Chat Model 和 Embedding Model。
+2. 使用页面连接测试确认模型地址、模型名和密钥有效。
+3. 新建 Agent，保持默认 `commonagent` 语义。
+4. 添加业务数据源并限制允许访问的表和字段。
+5. 按需配置语义模型、业务知识和 Agent 知识。
+6. 创建会话并完成一次问答。
+7. 刷新页面，确认历史消息仍能正确展示。
 
-![homepage-agents.png](../img/homepage-agents.png)
+如果使用指标系统，还需要配置指标 OpenAPI 地址并为 Agent 启用 `builtin-metric-system` skill，详见[配置参考](CONFIGURATION.md#5-指标系统)。
 
-点击右上角"创建智能体" ，这里只需要输入智能体名称，其他配置都选默认。
+## 8. 常见问题
 
-![agent-create.png](../img/agent-create.png)
+### 数据库密码仍为空
 
-创建成功后，可以看到智能体配置页面。
+通常是只创建了 `.env`，但没有 `source .env`，或者 IDE 没有导入环境变量。
 
-![agent-config.png](../img/agent-config.png)
+### 表不存在
 
-#### 配置数据源
+默认 `DATA_AGENT_DATASOURCE_SQL_INIT=never`，应用不会偷偷创建或修改数据库。新库应手工执行 schema。
 
-进入数据源配置页面，配置业务数据库（我们在环境初始化时第一步提供的业务数据库）。
+### Elasticsearch 连接失败
 
-![datasource-config.png](../img/datasource-config.png)
+确认 9200 端口、容器健康状态、IK 插件兼容性和 `SPRING_ELASTICSEARCH_URIS`。容器中的 `localhost` 指向容器自身，不是宿主机或另一个 ES 容器。
 
-添加完成后，可以在列表页面验证数据源连接是否正常。
+### 后端启动但无法问答
 
-![datasource-validation.png](../img/datasource-validation.png)
+分别检查 Chat Model、Embedding Model、Elasticsearch 和目标业务数据源。HTTP 端口可访问不代表这些外部依赖已就绪。
 
-对于添加的新数据源，需要选择使用哪些数据表进行数据分析。
+### 修改配置后没有生效
 
-![datasource-tables.png](../img/datasource-tables.png)
+确认变量已导出到后端进程，并检查是否被更高优先级的启动参数或外部 `application.yml` 覆盖。
 
-之后点击右上角的"初始化数据源"按钮。
+## 9. 下一步
 
-![datasource-init.png](../img/datasource-init.png)
-
-#### 配置预设问题
-
-预设问题管理，可以为智能体设置预设问题
-
-![preset-questions.png](../img/preset-questions.png)
-
-#### 配置语义模型
-
-语义模型管理，可以为智能体设置语义模型。
-语义模型库定义业务术语到数据库物理结构的精确转换规则，存储的是字段名的映射关系。
-例如`customerSatisfactionScore`对应数据库中的`csat_score`字段。
-
-![semantic-models.png](../img/semantic-models.png)
-
-#### 配置业务知识
-
-业务知识管理，可以为智能体设置业务知识。
-业务知识定义了业务术语和业务规则，比如GMV= 商品交易总额,包含付款和未付款的订单金额。
-业务知识可以设置为召回或者不召回，配置完成后需要点击右上角的"同步到向量库"按钮。
-
-![business-knowledge.png](../img/business-knowledge.png)
-
-#### 管理指标目录
-
-启用指标系统后，可以在“指标管理”页面同步 OpenAPI、查看业务指标与只读 API 绑定。页面支持：
-
-- 补充本地指标名称、描述和别名；再次同步 OpenAPI 不会覆盖本地内容。
-- 上架或下架指标；下架指标不能被问数检索、描述或执行。
-- 选择 Agent 后输入真实用户问题，按与指标问数完全相同的检索链路查看候选、融合分数和命中原因。
-
-旧数据库需要先手工创建 `metric_local_config`，具体 DDL 和实现说明见 [指标目录与检索实施方案](METRIC_CATALOG_RETRIEVAL.md)。
-
-成功后可以点击"前往运行界面"使用智能体进行数据查询。 调试没问题后，可以发布智能体。
-
-> 目前"访问API"在当前版本并没有实现完全，预留着二次开发用的
-
-### 5.2 数据智能体的运行
-
-运行界面
-
-![run-page.png](../img/run-page.png)
-
-运行界面左侧是历史消息记录，右侧是当前会话记录、输入框以及请求参数配置。
-
-输入框中输入问题，点击"发送"按钮，即可开始查询。
-
-![analyze-question.png](../img/analyze-question.png)
-
-分析报告为HTML格式报告，点击"下载报告"按钮，即可下载最终报告。
-
-![analyze-result.png](../img/analyze-result.png)
-
-#### 运行模式
-
-除了默认的请求模式，智能体运行时还支持"人工反馈"，"仅NL2SQL"，"简洁报告"和"显示SQL运行结果"等模式。
-
-**默认模式**
-
-默认情况不开启人工反馈模式，智能体直接自动生成计划并执行，并对SQL执行结果进行解析，生成报告。
-
-**人工反馈模式**
-
-如果开启人工反馈模式，则智能体会在生成计划后，等待用户确认，然后根据用户选择的反馈结果，更改计划或者执行计划。
-
-![feedback-mode.png](../img/feedback-mode.png)
-
-**仅NL2SQL模式**
-
-"仅NL2SQL模式"会让智能体只生成SQL和运行获取结果，不会生成报告。
-
-![nl2sql-mode.png](../img/nl2sql-mode.png)
-
-**显示SQL运行结果**
-
-"显示SQL运行结果"会在生成SQL和运行获取结果后，将SQL运行结果展示给用户。
-
-![show-sql-result.png](../img/show-sql-result.png)
-
-
-## 📚 下一步
-
-- 了解[架构设计](ARCHITECTURE.md)以深入理解系统原理
-- 查看[高级功能](ADVANCED_FEATURES.md)了解更多高级特性
-- 阅读[开发者文档](DEVELOPER_GUIDE.md)参与项目贡献
+- 开发和验证：[开发者指南](DEVELOPER_GUIDE.md)
+- 全部环境变量：[配置参考](CONFIGURATION.md)
+- 生产边界：[部署说明](DEPLOYMENT.md)
+- 知识配置：[知识配置最佳实践](KNOWLEDGE_USAGE.md)

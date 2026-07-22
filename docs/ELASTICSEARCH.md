@@ -68,9 +68,11 @@ docker compose -f docker-file/docker-compose-es.yml up -d
 # 停止
 docker compose -f docker-file/docker-compose-es.yml down
 
-# 彻底清理（含数据卷）
-docker compose -f docker-file/docker-compose-es.yml down -v
+# 停止并删除容器；当前使用 bind mount，不会删除宿主机数据
+docker compose -f docker-file/docker-compose-es.yml down
 ```
+
+当前 Compose 使用开发者机器上的绝对 bind mount，并挂载本地 IK 插件目录。其他开发者首次运行前必须把 `data`、`logs`、`snapshots` 和 `plugins/analysis-ik` 路径调整为本机实际目录。该文件是本地开发示例，不是可直接复用的生产部署清单。
 
 ### 容器参数
 
@@ -81,20 +83,20 @@ docker compose -f docker-file/docker-compose-es.yml down -v
 | Transport | `localhost:9300` | 节点间通信 |
 | 内存 | 512MB 堆 / 1GB 容器上限 | 开发环境 |
 | 安全 | 已关闭 | `xpack.security.enabled=false` |
-| 数据目录 | `~/elasticsearch/8180/data/` | 宿主机持久化 |
-| 日志目录 | `~/elasticsearch/8180/logs/` | 宿主机持久化 |
-| 快照目录 | `~/elasticsearch/8180/snapshots/` | 预留 |
+| 数据目录 | Compose 中配置的绝对路径 | 宿主机持久化 |
+| 日志目录 | Compose 中配置的绝对路径 | 宿主机持久化 |
+| 快照目录 | Compose 中配置的绝对路径 | 预留 |
 
 ### 磁盘水位线
 
-本地开发磁盘空间紧张时，首次启动后需调整磁盘水位线阈值（已通过 REST API 持久化到集群状态）：
+本地开发磁盘空间紧张并出现分片只读或无法分配时，可以调整磁盘水位线阈值：
 
 ```bash
 curl -X PUT localhost:9200/_cluster/settings -H 'Content-Type: application/json' \
   -d '{"persistent":{"cluster.routing.allocation.disk.watermark.low":"97%","cluster.routing.allocation.disk.watermark.high":"98%","cluster.routing.allocation.disk.watermark.flood_stage":"99%"}}'
 ```
 
-此配置存储在集群状态中，随 volume 持久化。仅重建 volume 时需要重新执行。
+此配置存储在集群状态中，并随数据目录持久化。删除或更换数据目录后需要重新设置。上述高水位只适用于空间紧张的本地开发环境，不是生产建议。
 
 ## 4. 查看数据
 

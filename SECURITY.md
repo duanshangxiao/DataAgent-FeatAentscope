@@ -1,7 +1,36 @@
-# Security Policy
+# 安全策略
 
-## Reporting a Vulnerability
+## 当前安全边界
 
-Please report any security issue or Higress crash report to [ASRC](https://security.alibaba.com/)(Alibaba Security Response Center) where the issue will be triaged appropriately.
+DataAgent 当前定位为本机或可信内网中的智能数据分析模块，不是可直接暴露公网的多租户平台。
 
-Thank you in advance for helping to keep Spring AI Alibaba DataAgent secure.
+当前版本尚未形成以下完整能力：
+
+- 统一身份认证与细粒度授权。
+- 多租户数据隔离和 Agent/会话所有权校验体系。
+- 模型密钥、数据源密码的统一加密落库与轮换。
+- 面向公网的 CORS、限流、审计和安全网关门禁。
+- 对所有 REST、SSE 和 MCP 入口的统一 API Key 鉴权。
+
+部署前请阅读[部署说明](docs/DEPLOYMENT.md)。在上述能力补齐前，服务必须位于可信网络边界内，并由外部访问控制保护。
+
+## 报告漏洞
+
+请通过 [Alibaba Security Response Center](https://security.alibaba.com/) 私下报告安全问题。不要在公开 Issue、PR、聊天记录或截图中附带：
+
+- 数据库、模型、OSS 或 Langfuse 密钥。
+- 完整 JDBC URL 和内部网络地址。
+- 用户问题、模型输出或业务数据样本。
+- 可直接利用的生产环境细节。
+
+报告中请尽量提供受影响版本、复现条件、预期与实际行为，以及已脱敏的日志或最小示例。
+
+## 密钥泄露处理
+
+如果密钥曾被提交到 Git、构建日志或公开制品，删除文件或覆盖提交并不能使密钥恢复安全。应立即：
+
+1. 吊销或轮换泄露凭据。
+2. 检查访问和审计日志。
+3. 清理可下载制品和缓存。
+4. 使用 `.env`、CI Secret 或部署平台 Secret 重新注入。
+5. 增加自动化 Secret 扫描或回归门禁。

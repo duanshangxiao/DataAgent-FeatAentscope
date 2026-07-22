@@ -1,7 +1,5 @@
 # 项目架构说明
 
-[English](./ARCHITECTURE-en.md)
-
 > 本文描述当前代码中的真实主链路。历史版本中的 StateGraph 节点流水线不再是当前对话运行时架构。
 
 ## 1. 项目定位
@@ -111,17 +109,7 @@ Agent 可连接 MySQL、PostgreSQL、Oracle、SQL Server、Hive、Dameng 和 H2 
 
 ## 7. 关键配置
 
-| 配置 | 默认/说明 |
-|---|---|
-| `server.port` | `8065` |
-| `DATA_AGENT_DATASOURCE_URL` | 管理库连接地址 |
-| `DATA_AGENT_DATASOURCE_USERNAME` | 管理库用户名，默认 `root` |
-| `DATA_AGENT_DATASOURCE_PASSWORD` | 必须通过环境提供；仓库不保存真实默认口令 |
-| `spring.ai.vectorstore.type` | 当前为 `elasticsearch` |
-| `spring.ai.vectorstore.elasticsearch.dimensions` | `1024` |
-| `spring.ai.alibaba.data-agent.vector-store.enable-hybrid-search` | `true` |
-| `spring.ai.alibaba.data-agent.capabilities.metric-system.enabled` | `true` |
-| `spring.ai.alibaba.data-agent.agentscope.observability.enabled` | `true` |
+当前后端端口为 `8065`，默认向量存储为 Elasticsearch、索引维度为 `1024`，管理库密码必须由外部环境提供。完整环境变量、默认值、`.env` 加载和生产约束统一维护在 `docs/CONFIGURATION.md`，本文件不复制第二份配置表。
 
 ## 8. 当前架构边界
 
@@ -133,7 +121,13 @@ Agent 可连接 MySQL、PostgreSQL、Oracle、SQL Server、Hive、Dameng 和 H2 
 
 - `docs/todolist.md`：当前整改路线图
 - `docs/DEVELOPER_GUIDE.md`：开发与验证方式
+- `docs/CONFIGURATION.md`：环境变量与配置参考
+- `docs/DEPLOYMENT.md`：部署边界与运行检查
+- `docs/UPGRADE.md`：数据库手工升级流程
+- `docs/API_AND_SSE.md`：REST 入口与 SSE 协议
 - `docs/ELASTICSEARCH.md`：Elasticsearch 配置和排障
 - `docs/METRIC_CATALOG_RETRIEVAL.md`：指标目录、公共检索、本地修正和上下架
 - `docs/KNOWLEDGE_USAGE.md`：语义模型和知识配置
 - `docs/LESSONS.md`：历史问题、根因和可复用经验
+
+`docs/duan/` 保存早期 OpenCode 修复问题时形成的调查和实施记录，仅供追溯，不作为当前架构事实来源。

@@ -1,15 +1,23 @@
+## 改动内容与原因
 
-### Describe what this PR does / why we need it
+<!-- 说明解决了什么问题，为什么需要这样修改。 -->
 
+## 关联 Issue
 
-### Does this pull request fix one issue?
+<!-- 例如：Fixes #123；没有则填写“无”。 -->
 
-<!--If that, add "Fixes #xxxx" below in the next line. For example, Fixes #15. Otherwise, add "NONE" -->
+## 实现与影响范围
 
-### Describe how you did it
+<!-- 说明关键调用链、数据格式、数据库或兼容性影响。 -->
 
+## 验证结果
 
-### Describe how to verify it
+<!-- 列出实际执行的编译、测试、构建和运行时验证。 -->
 
+## 数据库、配置与升级
 
-### Special notes for reviews
+<!-- 说明 SQL、环境变量、部署或旧库升级变化；没有则填写“无”。 -->
+
+## 风险与审查重点
+
+<!-- 说明仍存在的风险、未执行项，以及希望审查者重点关注的位置。 -->

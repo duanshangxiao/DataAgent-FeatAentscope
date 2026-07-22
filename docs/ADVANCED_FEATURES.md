@@ -1,491 +1,70 @@
-中文 | [English](./ADVANCED_FEATURES-en.md)
+# 高级功能与当前边界
 
-# 高级功能使用
+本文只说明已经存在但需要额外配置或安全判断的能力。具体配置值统一见[配置参考](CONFIGURATION.md)。
 
-本文档介绍 DataAgent 的高级功能和自定义配置选项。
+## 1. API Key 管理
 
-## 🔑 访问 API（API Key 调用）
+Agent 管理接口支持 API Key 的生成、重置、删除和启用状态管理。
 
-> **注意**: 当前版本仅提供 API Key 生成、重置、删除与开关的管理能力，**尚未在后端对 `X-API-Key` 做权限校验**；需要鉴权的生产场景请自行在后端拦截器中补充校验逻辑后再对外开放。
+需要特别注意：API Key 生命周期管理不等于所有对外请求已经完成统一鉴权。当前项目仍缺少完整身份认证、多租户隔离和企业级权限门禁，因此不能仅凭“已生成 API Key”就把服务直接暴露到公网。
 
-### API Key 管理
+远程部署前至少需要：
 
-1. 在智能体详情左侧菜单进入"访问 API"
-2. 为智能体生成 Key，并根据需要启用/禁用
-3. 调用会话接口时在请求头添加 `X-API-Key: <your_api_key>`
+- 在可信网关或后端入口验证调用身份。
+- 校验 API Key 与目标 Agent、状态和权限的关系。
+- 对管理接口和问答接口分别授权。
+- 对密钥进行掩码返回、轮换、审计和限流。
 
-![访问 API Key](../img/apikey.png)
+安全边界见[部署说明](DEPLOYMENT.md)和根目录 `SECURITY.md`。
 
-### API 调用示例
+## 2. MCP Server
 
-#### 创建会话
+后端引入了 Spring AI MCP Server WebFlux starter，并通过 `McpServerConfig` 注册 MCP 工具。MCP Tool 与 Agent 内部 ToolCallback 会做隔离，避免把对外 MCP 工具重复装入 AgentScope 工具集。
 
-```bash
-curl -X POST "http://127.0.0.1:3000/api/agent/<agentId>/sessions" \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: <your_api_key>" \
-  -d '{"title":"demo"}'
-```
+MCP 端点、传输方式和客户端兼容性受当前 Spring AI 版本及环境配置影响。接入时应以运行日志和实际 starter 配置为准，并完成一次 MCP Inspector 或目标客户端的端到端验证，不要只根据历史文档中的固定路径判断。
 
-#### 发送消息
+当前 MCP 接口同样没有完整生产鉴权，必须放在可信网络或受保护网关之后。
 
-```bash
-curl -X POST "http://127.0.0.1:3000/api/sessions/<sessionId>/messages" \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: <your_api_key>" \
-  -d '{"role":"user","content":"给我一个示例","messageType":"text"}'
-```
+## 3. Python 代码执行器
 
-### 实现自定义鉴权
-
-如需在生产环境启用API Key鉴权，可以创建一个拦截器：
-
-```java
-@Component
-public class ApiKeyAuthInterceptor implements HandlerInterceptor {
-    
-    @Autowired
-    private AgentService agentService;
-    
-    @Override
-    public boolean preHandle(HttpServletRequest request, 
-                            HttpServletResponse response, 
-                            Object handler) throws Exception {
-        String apiKey = request.getHeader("X-API-Key");
-        
-        if (apiKey == null || apiKey.isEmpty()) {
-            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            return false;
-        }
-        
-        // 验证API Key
-        boolean isValid = agentService.validateApiKey(apiKey);
-        
-        if (!isValid) {
-            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
-            return false;
-        }
-        
-        return true;
-    }
-}
-```
-
-## 🔌 MCP服务器
-
-DataAgent 支持作为 MCP (Model Context Protocol) 服务器对外提供服务。
-
-### 配置说明
-
-本项目通过 **Mcp Server Boot Starter** 实现MCP服务器功能。
-
-更多详细配置请参考官方文档：
-https://springdoc.cn/spring-ai/api/mcp/mcp-server-boot-starter-docs.html#_配置属性
-
-### 端点配置
-
-**默认配置**:
-- MCP Web 传输的自定义 SSE 端点路径：`项目地址:项目端口/sse`
-- 例如：`http://localhost:8065/sse`
-
-**自定义端点**:
-
-可通过配置修改端点路径：
+配置前缀：
 
 ```yaml
-spring:
-  ai:
-    mcp:
-      server:
-        sse-endpoint: /custom-mcp-endpoint
+spring.ai.alibaba.data-agent.code-executor
 ```
 
-### 可用工具
+代码层支持 `DOCKER`、`CONTAINERD`、`KATA`、`AI_SIMULATION` 和 `LOCAL` 枚举。当前 `application.yml` 默认显式选择 `local`。
 
-#### 1. listAgentsToolCallback
+- `local`：直接使用后端机器的 Python，开发方便，但隔离最弱，不建议处理不可信输入。
+- `docker`：使用容器隔离，可限制网络、CPU、内存和超时；目标环境需要 Docker Daemon。
+- `ai-simulation`：不真实执行 Python，只模拟结果，适合部分演示和无运行环境场景。
+- `containerd/kata`：代码保留了扩展枚举，使用前必须确认对应实现和目标环境已经完整验证。
 
-查询智能体列表，支持按状态和关键词过滤。
+生产环境不要让 `local` 执行器运行不可信模型生成代码。容器执行器也要保持无网络或最小网络权限、只读基础镜像、资源限制和短超时。
 
-```json
-{
-  "name": "listAgentsToolCallback",
-  "description": "查询智能体列表，支持按状态和关键词过滤。可以根据智能体的状态（如已发布PUBLISHED、草稿DRAFT等）进行过滤，也可以通过关键词搜索智能体的名称、描述或标签。返回按创建时间降序排列的智能体列表。",
-  "inputSchema": {
-    "type": "object",
-    "properties": {
-      "agentListRequest": {
-        "type": "object",
-        "properties": {
-          "keyword": {
-            "type": "string",
-            "description": "按关键词搜索智能体名称或描述"
-          },
-          "status": {
-            "type": "string",
-            "description": "按状态过滤，例如 '状态：draft-待发布，published-已发布，offline-已下线"
-          }
-        },
-        "required": ["keyword", "status"]
-      }
-    },
-    "required": ["agentListRequest"],
-    "additionalProperties": false
-  }
-}
-```
+## 4. 文件存储
 
-**使用示例**:
+项目支持本地文件和阿里云 OSS：
 
-```json
-{
-  "agentListRequest": {
-    "keyword": "销售",
-    "status": "published"
-  }
-}
-```
+- `local`：默认写入后端工作目录下的 `uploads`，部署时需要持久化并由反向代理转发 `/uploads`。
+- `oss`：需要配置 OSS Endpoint、Bucket 和 Access Key；Secret 只能从部署环境注入。
 
-### 本地调试
+切换存储实现后需要验证上传、数据库回填、页面刷新和旧文件访问，不能只验证上传接口返回成功。
 
-使用 MCP Inspector 进行本地调试：
+## 5. Langfuse 与回答解释
 
-```bash
-npx @modelcontextprotocol/inspector http://localhost:8065/mcp/connection
-```
+Langfuse 默认关闭。启用后，通过 OpenTelemetry 导出模型和 AgentScope tracing。运行中还会维护会话 trace 和回答 explain 数据，供前端查看路由、检索与工具执行摘要。
 
-这将打开一个调试界面，可以测试MCP服务器的各项功能。
-## 🔗 逻辑外键支持
+可观测数据可能包含用户问题、模型输出和工具摘要。接入外部 Langfuse 前必须确认数据分类、脱敏、访问控制和保留周期。
 
-### 功能概述
+## 6. 指标 capability
 
-在实际生产环境中,许多数据库为了性能考虑不设置物理外键约束,这导致了以下问题:
-- LLM 无法自动推断表间关系
-- 多表 JOIN 查询准确率下降
-- 复杂业务查询失败率高
+指标能力从外部 OpenAPI 同步业务指标语义与执行契约，并通过 Agent skill 控制是否向当前 Agent 提供指标工具。当前公共检索同时服务运行时问答和管理页检索验证。
 
-DataAgent 创新性地实现了**逻辑外键配置功能**,允许用户手动定义表间关系,显著提升了多表查询的准确性。
+具体设计、上下架门禁、generation 切换和旧库升级见[指标目录与检索说明](METRIC_CATALOG_RETRIEVAL.md)。早期实现计划保存在 `docs/duan/`，仅供历史追溯。
 
-### 业务场景
+## 7. 逻辑外键与知识增强
 
-典型场景包括:
-- 订单表和用户表通过 `user_id` 关联,但数据库未设置外键
-- 商品表和分类表的关系未在数据库层面体现
-- 历史遗留系统的表关系仅存在于业务逻辑中
+对于没有物理外键的业务库，可以通过逻辑关系和语义模型补充表间关系、业务字段名、同义词和业务描述。配置效果依赖实际数据源表结构和 Agent 绑定范围。
 
-### 数据模型
-
-逻辑外键信息存储在 `logical_relation` 表中:
-
-```sql
-CREATE TABLE logical_relation (
-  id INT PRIMARY KEY AUTO_INCREMENT,
-  datasource_id INT NOT NULL,           -- 关联的数据源
-  source_table_name VARCHAR(100),       -- 主表名
-  source_column_name VARCHAR(100),      -- 主表字段
-  target_table_name VARCHAR(100),       -- 关联表名
-  target_column_name VARCHAR(100),      -- 关联表字段
-  relation_type VARCHAR(20),            -- 关系类型: 1:1, 1:N, N:1
-  description VARCHAR(500),             -- 业务描述
-  FOREIGN KEY (datasource_id) REFERENCES datasource(id)
-);
-```
-
-### 工作流程
-
-逻辑外键的处理流程如下:
-
-```
-前端添加逻辑外键 
-    ↓
-Schema召回时加载逻辑外键
-    ↓
-过滤与召回表相关的外键
-    ↓
-合并物理外键和逻辑外键
-    ↓
-基于完整Schema生成SQL
-```
-
-### 技术实现
-
-#### 1. 获取逻辑外键
-
-系统在 Schema 召回阶段会自动获取相关的逻辑外键:
-
-```java
-private List<String> getLogicalForeignKeys(Integer agentId, 
-        List<Document> tableDocuments) {
-    
-    // 1. 获取当前智能体的数据源
-    AgentDatasource agentDatasource = 
-        agentDatasourceService.getCurrentAgentDatasource(agentId);
-    
-    // 2. 提取召回的表名列表
-    Set<String> recalledTableNames = tableDocuments.stream()
-        .map(doc -> (String) doc.getMetadata().get("name"))
-        .collect(Collectors.toSet());
-    
-    // 3. 查询该数据源的所有逻辑外键
-    List<LogicalRelation> allLogicalRelations = 
-        datasourceService.getLogicalRelations(datasourceId);
-    
-    // 4. 过滤只保留与召回表相关的外键
-    List<String> formattedForeignKeys = allLogicalRelations.stream()
-        .filter(lr -> recalledTableNames.contains(lr.getSourceTableName())
-                   || recalledTableNames.contains(lr.getTargetTableName()))
-        .map(lr -> String.format("%s.%s=%s.%s", 
-            lr.getSourceTableName(), lr.getSourceColumnName(),
-            lr.getTargetTableName(), lr.getTargetColumnName()))
-        .distinct()
-        .collect(Collectors.toList());
-    
-    return formattedForeignKeys;
-}
-```
-
-**关键特性**:
-- 只获取与召回表相关的逻辑外键,避免不必要的信息干扰
-- 格式化为统一的外键描述格式: `table1.column1=table2.column2`
-- 自动去重,避免重复定义
-
-#### 2. 聚合外键信息
-
-在 `TableRelationNode` 节点中,将逻辑外键合并到物理外键中:
-
-```java
-private SchemaDTO buildInitialSchema(String agentId, 
-        List<Document> columnDocuments, 
-        List<Document> tableDocuments,
-        DbConfig agentDbConfig, 
-        List<String> logicalForeignKeys) {
-    
-    SchemaDTO schemaDTO = new SchemaDTO();
-    
-    // 构建基础Schema(包含物理外键)
-    schemaService.buildSchemaFromDocuments(agentId, 
-        columnDocuments, tableDocuments, schemaDTO);
-    
-    // 将逻辑外键合并到Schema的foreignKeys字段
-    if (logicalForeignKeys != null && !logicalForeignKeys.isEmpty()) {
-        List<String> existingForeignKeys = schemaDTO.getForeignKeys();
-        if (existingForeignKeys == null || existingForeignKeys.isEmpty()) {
-            // 没有物理外键时,直接使用逻辑外键
-            schemaDTO.setForeignKeys(logicalForeignKeys);
-        } else {
-            // 合并物理外键和逻辑外键
-            List<String> allForeignKeys = new ArrayList<>(existingForeignKeys);
-            allForeignKeys.addAll(logicalForeignKeys);
-            schemaDTO.setForeignKeys(allForeignKeys);
-        }
-        log.info("Merged {} logical foreign keys into schema", 
-            logicalForeignKeys.size());
-    }
-    
-    return schemaDTO;
-}
-```
-
-**设计优势**:
-- 物理外键和逻辑外键统一处理,对下游透明
-- 逻辑外键优先级与物理外键相同
-- 完整的外键信息提升 LLM 对表关系的理解
-
-### 使用示例
-
-#### 配置逻辑外键
-
-在前端数据源管理界面:
-
-1. 选择数据源
-2. 进入"逻辑外键管理"
-3. 添加外键关系:
-   - 源表: `orders`
-   - 源字段: `user_id`
-   - 目标表: `users`
-   - 目标字段: `id`
-   - 关系类型: `N:1`
-   - 描述: "订单表关联用户表"
-
-#### 效果对比
-
-**未配置逻辑外键**:
-```
-用户问题: "查询用户张三的所有订单"
-生成SQL: SELECT * FROM orders WHERE user_name = '张三'  --  错误
-```
-
-**配置逻辑外键后**:
-```
-用户问题: "查询用户张三的所有订单"
-生成SQL:  -- ✅ 正确
-SELECT o.* 
-FROM orders o
-JOIN users u ON o.user_id = u.id
-WHERE u.name = '张三'
-```
-
-### 最佳实践
-
-1. **优先配置高频关联**: 先配置业务中最常用的表关联关系
-2. **添加描述信息**: 详细的关系描述有助于 LLM 理解业务语义
-3. **定期维护**: 随着业务变化及时更新逻辑外键配置
-4. **关系类型准确**: 正确标注 1:1、1:N、N:1 关系,提升推理准确性
-
-### 注意事项
-
-- 逻辑外键配置仅用于 Schema 增强,不会影响实际数据库结构
-- 错误的逻辑外键配置可能导致生成错误的 SQL
-- 建议与数据库管理员确认表关系的准确性
-
-## 🐍 Python 执行环境配置
-
-### 执行器类型
-
-系统支持三种Python执行器：
-
-1. **Docker Executor** (推荐)
-2. **Local Executor**
-3. **AI Simulation Executor**
-
-### Docker 执行器配置
-
-```yaml
-spring:
-  ai:
-    alibaba:
-      data-agent:
-        code-executor:
-          type: docker
-          docker:
-            image: continuumio/anaconda3:latest
-            timeout: 300000  # 5分钟超时
-            memory-limit: 512m
-            cpu-limit: 1.0
-```
-
-### Local 执行器配置
-
-```yaml
-spring:
-  ai:
-    alibaba:
-      data-agent:
-        code-executor:
-          type: local
-          local:
-            python-path: /usr/bin/python3
-            timeout: 300000
-            work-dir: /tmp/dataagent
-```
-
-### AI 模拟执行器
-
-用于测试环境，不实际执行Python代码，而是通过AI模拟执行结果：
-
-```yaml
-spring:
-  ai:
-    alibaba:
-      data-agent:
-        code-executor:
-          type: ai-simulation
-```
-
-## ⚙️ 高级配置选项
-
-### LLM 服务类型
-
-```yaml
-spring:
-  ai:
-    alibaba:
-      data-agent:
-        llm-service-type: STREAM  # STREAM 或 BLOCK
-```
-
-- `STREAM`: 流式输出，适合实时交互
-- `BLOCK`: 阻塞式输出，等待完整结果
-
-### 多轮对话配置
-
-```yaml
-spring:
-  ai:
-    alibaba:
-      data-agent:
-        multi-turn:
-          enabled: true
-          max-history: 10  # 最大历史轮数
-          context-window: 4096  # 上下文窗口大小
-```
-
-### 计划执行配置
-
-```yaml
-spring:
-  ai:
-    alibaba:
-      data-agent:
-        plan-executor:
-          max-retry: 3  # 最大重试次数
-          timeout: 600000  # 10分钟超时
-```
-
-## 📊 Langfuse 可观测性
-
-DataAgent 集成了 [Langfuse](https://langfuse.com/) 作为 LLM 可观测性平台，通过 OpenTelemetry 协议上报追踪数据，帮助您监控和分析智能体的运行状况。
-
-### 功能概述
-
-- **请求追踪**: 记录每次 Graph 流式处理的完整生命周期
-- **Token 用量统计**: 累计每次请求的 prompt tokens 和 completion tokens
-- **错误追踪**: 记录异常类型和错误信息，便于排查问题
-- 
-### 配置方式
-
-在 `application.yml` 中配置 Langfuse 连接信息：
-
-```yaml
-spring:
-  ai:
-    alibaba:
-      data-agent:
-        langfuse:
-          enabled: ${LANGFUSE_ENABLED:true}
-          host: ${LANGFUSE_HOST:}
-          public-key: ${LANGFUSE_PUBLIC_KEY:}
-          secret-key: ${LANGFUSE_SECRET_KEY:}
-```
-
-或通过环境变量配置：
-
-```bash
-export LANGFUSE_ENABLED=true
-export LANGFUSE_HOST=https://cloud.langfuse.com
-export LANGFUSE_PUBLIC_KEY=pk-lf-xxx
-export LANGFUSE_SECRET_KEY=sk-lf-xxx
-```
-
-> 配置参数详情请参考 [开发者指南 - Langfuse 配置](DEVELOPER_GUIDE.md#11-langfuse-可观测性配置-langfuse-observability)。
-
-
-
-
-### 禁用 Langfuse
-
-如不需要可观测性功能，设置 `enabled` 为 `false` 即可，系统将使用 noop OpenTelemetry 实例，不会产生任何性能开销：
-
-```yaml
-spring:
-  ai:
-    alibaba:
-      data-agent:
-        langfuse:
-          enabled: false
-```
-
-## 📚 相关文档
-
-- [快速开始](QUICK_START.md) - 基础配置和安装
-- [架构设计](ARCHITECTURE.md) - 系统架构和技术实现
-- [开发者文档](DEVELOPER_GUIDE.md) - 贡献指南
+最佳实践见[知识配置说明](KNOWLEDGE_USAGE.md)。修改知识或关系后需要重新验证召回、SQL 生成、只读安全和历史问答，不应把 Prompt 提示当成唯一约束。

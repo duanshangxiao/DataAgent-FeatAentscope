@@ -37,9 +37,13 @@
 
 | 文件 | 作用 | 更新时机 |
 |---|---|---|
-| `docs/ARCHITECTURE.md` | 技术栈、模块结构、核心调用链和关键配置 | 架构事实变化时 |
-| `docs/DEVELOPER_GUIDE.md` | 开发环境和详细编码规范 | 工具链或编码规范变化时 |
-| `CONTRIBUTING-zh.md` / `CONTRIBUTING-en.md` | 贡献、格式和提交约定 | 贡献流程变化时 |
+| `docs/ARCHITECTURE.md` | 技术栈、模块结构、核心调用链和架构边界 | 架构事实变化时 |
+| `docs/CONFIGURATION.md` | 环境变量、配置默认值和密钥约束 | 配置入口或默认值变化时 |
+| `docs/DEVELOPER_GUIDE.md` | 开发、测试、验证和编码规范 | 工具链或开发流程变化时 |
+| `docs/DEPLOYMENT.md` | 依赖、部署边界和运行检查 | 部署形态或外部依赖变化时 |
+| `docs/UPGRADE.md` | SQL 基线和旧库手工升级 | 数据库结构或升级步骤变化时 |
+| `docs/API_AND_SSE.md` | REST 入口、SSE 事件和标识语义 | API 或流式协议变化时 |
+| `CONTRIBUTING-zh.md` | 贡献、格式和提交约定 | 贡献流程变化时 |
 | `data-agent-frontend/README-CODE-STYLE.md` | 前端格式、lint、类型与无用代码检查 | 前端工具链变化时 |
 | `docs/KNOWLEDGE_USAGE.md` | 语义模型和业务知识配置 | 知识配置机制变化时 |
 | `docs/ELASTICSEARCH.md` | Elasticsearch 配置与排障 | ES 集成变化时 |
@@ -51,9 +55,13 @@
 |---|---|---|
 | `docs/todolist.md` | 当前路线图、已完成事项和长期关注 | 路线图或完成状态实际变化时 |
 | `docs/LESSONS.md` | 非直觉故障的现象、根因、修复和教训 | 出现高价值、容易复发的经验时 |
-| `docs/duan/` | 指标能力规格、任务书和阶段性设计资料 | 对应需求或设计变化时 |
+| `docs/duan/` | 早期 OpenCode 修复问题的调查、任务书和实施记录 | 历史只读；当前事实提炼到正式文档 |
 
 `docs/LESSONS.md` 是历史案例库，不是第二份规则文件。仍然有效的结论应提炼成 `AGENTS.md` 中的一条短规则，事故细节继续留在原处。
+
+`docs/duan/` 不纳入正式文档导航，不要求随当前代码持续更新。遇到冲突时以代码、测试、配置和正式文档为准。
+
+项目后续只维护中文说明，不再维护人工同步的英文镜像。若未来重新提供英文文档，应通过明确的生成或发布流程避免双份内容漂移。
 
 ### 3.4 Agent 运行时层
 
@@ -98,4 +106,4 @@
 
 ---
 
-最后更新：2026-07-21（Codex 接管迁移）
+最后更新：2026-07-22（中文单一维护源与正式文档重组）
