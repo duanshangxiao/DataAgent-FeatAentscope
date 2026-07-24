@@ -97,11 +97,11 @@ MySQL 基线共 15 张表：
 
 ### 6.2 向量检索
 
-当前 `application.yml` 默认配置 `spring.ai.vectorstore.type=elasticsearch`，索引维度为 1024，并启用向量与关键词双路召回后的融合。PGVector starter 和示例配置仍保留，作为可选切换方案，不是当前默认运行后端。
+当前 `application.yml` 通过 `DATA_AGENT_VECTORSTORE_TYPE` 选择向量库，默认使用 Elasticsearch、1024 维索引和向量与关键词双路召回后的融合。PGVector 使用独立连接池和预初始化表，作为纯向量检索切换方案；应用启动只校验表结构，不自动迁移数据库。
 
 指标目录使用独立的业务语义模型和 API 契约模型：`MetricDefinition` 只参与检索，`MetricApiContract` 只参与接口执行，二者通过稳定 `metricKey` 和 `MetricBinding` 关联。`MetricRetrievalService` 是指标问数工具与管理页检索验证的唯一公共入口，并在 Agent 作用域内按需使用 `business_knowledge` 扩展本地术语。
 
-OpenAPI 原始语义保持只读；平台本地名称、描述、别名和上下架状态持久化在 `metric_local_config`。指标索引以 generation 先写后切换，搜索、描述和执行共享同一个活动目录快照；下架指标同时受到 ES、业务检索和执行入口三层门禁。详细设计和旧库升级方式见 `docs/METRIC_CATALOG_RETRIEVAL.md`。
+OpenAPI 原始语义保持只读；平台本地名称、描述、别名和上下架状态持久化在 `metric_local_config`。指标索引以 generation 先写后切换，搜索、描述和执行共享同一个活动目录快照；下架指标同时受到向量库过滤、业务检索和执行入口三层门禁。详细设计和旧库升级方式见 `docs/METRIC_CATALOG_RETRIEVAL.md`。
 
 ### 6.3 业务数据源
 

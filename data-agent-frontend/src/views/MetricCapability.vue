@@ -15,7 +15,7 @@
             刷新页面
           </el-button>
           <el-button type="primary" :icon="Refresh" :loading="refreshing" @click="handleRefresh">
-            {{ refreshing ? '同步中...' : '同步 OpenAPI' }}
+            {{ refreshing ? '同步中...' : '同步指标目录' }}
           </el-button>
         </div>
       </div>
@@ -128,7 +128,7 @@
           <div class="card-title">
             <div>
               <strong>有效指标目录</strong>
-              <div class="card-subtitle">同步 OpenAPI 不会覆盖本地修正和上下架状态</div>
+              <div class="card-subtitle">同步第三方目录不会覆盖本地修正和上下架状态</div>
             </div>
           </div>
         </template>
@@ -139,6 +139,7 @@
               <div class="expand-content">
                 <section>
                   <h4>有效业务描述</h4>
+                  <p><strong>metricKey：</strong>{{ scope.row.metricKey }}</p>
                   <p>{{ scope.row.description || '-' }}</p>
                 </section>
                 <section>
@@ -158,6 +159,34 @@
                     <el-table-column prop="type" label="类型" width="100" />
                     <el-table-column prop="description" label="说明" />
                   </el-table>
+                </section>
+                <section>
+                  <h4>响应契约（只读）</h4>
+                  <p>{{ scope.row.contract.response.description || '未提供响应说明' }}</p>
+                  <p>
+                    <strong>内容类型：</strong>{{ scope.row.contract.response.contentType || '-' }}
+                    <template v-if="scope.row.contract.response.successCriteria">
+                      · <strong>成功条件：</strong>
+                      {{ scope.row.contract.response.successCriteria.jsonPath }}
+                      {{ scope.row.contract.response.successCriteria.operator }}
+                      {{ formatJson(scope.row.contract.response.successCriteria.expectedValue) }}
+                    </template>
+                  </p>
+                  <p>
+                    <strong>结果路径：</strong>{{ scope.row.contract.response.resultPath || '自动识别' }}
+                    · <strong>消息路径：</strong
+                    >{{ scope.row.contract.response.messagePath || '-' }}
+                  </p>
+                  <details class="contract-json">
+                    <summary>查看请求与响应 Schema</summary>
+                    <pre>{{
+                      formatJson({
+                        requestSchema: scope.row.contract.requestSchema,
+                        responseSchema: scope.row.contract.response.schema,
+                        responseExamples: scope.row.contract.response.examples,
+                      })
+                    }}</pre>
+                  </details>
                 </section>
               </div>
             </template>
@@ -221,13 +250,13 @@
           本地修正只影响指标检索，不会改变 API 路径、参数或响应契约。
         </el-alert>
         <el-form label-position="top">
-          <el-form-item label="OpenAPI 原始名称">
+          <el-form-item label="目录原始名称">
             <el-input :model-value="editingMetric?.sourceMetricName" disabled />
           </el-form-item>
           <el-form-item label="本地指标名称">
             <el-input v-model="editForm.localMetricName" placeholder="留空则使用原始名称" />
           </el-form-item>
-          <el-form-item label="OpenAPI 原始描述">
+          <el-form-item label="目录原始描述">
             <el-input
               :model-value="editingMetric?.sourceDescription"
               type="textarea"
@@ -421,7 +450,7 @@
 
   const clearOverride = async () => {
     if (!editingMetric.value) return;
-    await ElMessageBox.confirm('确认清除本地修正并恢复 OpenAPI 原始定义？', '恢复原始定义', {
+    await ElMessageBox.confirm('确认清除本地修正并恢复目录原始定义？', '恢复原始定义', {
       type: 'warning',
     });
     saving.value = true;
@@ -457,6 +486,7 @@
   };
 
   const formatScore = (score?: number) => (score == null ? '-' : score.toFixed(4));
+  const formatJson = (value: unknown) => JSON.stringify(value ?? null, null, 2);
   const indexLabel = (status: MetricCatalogView['indexStatus']) =>
     ({ PENDING: '处理中', COMPLETED: '已生效', FAILED: '失败' })[status];
   const indexTagType = (status: MetricCatalogView['indexStatus']) =>
@@ -550,6 +580,20 @@
   }
   .edit-hint {
     margin-bottom: 1rem;
+  }
+  .contract-json {
+    color: var(--el-text-color-secondary);
+  }
+  .contract-json pre {
+    max-height: 360px;
+    margin: 0.75rem 0 0;
+    padding: 0.75rem;
+    overflow: auto;
+    border: 1px solid var(--el-border-color);
+    border-radius: 6px;
+    background: var(--el-bg-color);
+    color: var(--el-text-color-primary);
+    white-space: pre-wrap;
   }
   @media (max-width: 900px) {
     .content-header,

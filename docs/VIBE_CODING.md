@@ -48,6 +48,9 @@
 | `docs/KNOWLEDGE_USAGE.md` | 语义模型和业务知识配置 | 知识配置机制变化时 |
 | `docs/ELASTICSEARCH.md` | Elasticsearch 配置与排障 | ES 集成变化时 |
 | `docs/METRIC_CATALOG_RETRIEVAL.md` | 指标/API拆分、公共检索、本地修正与上下架实施方案 | 指标目录或检索机制变化时 |
+| `docs/METRIC_CATALOG_INTEGRATION_SPEC.md` | 第三方指标目录通用规范与 data-metrics 供应方 API Profile | 第三方目录协议或供应方契约变化时 |
+| `docs/METRIC_CATALOG_INTEGRATION_PLAN.md` | 标准目录解析、metricKey 工具链和 HTTP 响应改造计划 | 指标标准化接入实施范围或状态变化时 |
+| `docs/METRIC_CATALOG_OPERATIONS.md` | 第三方指标目录切换、配置、验证、回滚和运维排障 | 指标目录部署配置或运行边界变化时 |
 
 ### 3.3 状态与经验层
 
@@ -106,4 +109,4 @@
 
 ---
 
-最后更新：2026-07-22（中文单一维护源与正式文档重组）
+最后更新：2026-07-24（增加第三方指标目录运维手册）

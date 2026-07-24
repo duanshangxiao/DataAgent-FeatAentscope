@@ -22,10 +22,22 @@
 | 2026-07-21 | 第一批架构整改（R-01～R-03、R-05、R-06） | 订正文档与当前运行链路；恢复 JUnit 5/Surefire 与 5% JaCoCo 门禁；同步 MySQL schema 并增加漂移测试；强制 `agentType=commonagent`；固定前端工具链并恢复 type-check/lint/build/浏览器验收。后端 35 项测试通过，前端真实页面零控制台错误和警告 |
 | 2026-07-21 | 明文密钥代码收口（R-04 代码部分） | 移除仓库默认凭据，管理接口返回掩码，更新时保留未改密钥，连接测试日志不再输出完整配置；历史上已经暴露且仍有效的密钥仍需人工轮换后才能关闭 R-04 |
 | 2026-07-21 | 指标目录与检索第一阶段整改 | 拆分 `MetricDefinition`、`MetricApiContract`、`MetricBinding`；抽取问数/管理页共用 `MetricRetrievalService`；接入 Agent 业务知识术语增强；支持本地名称/描述/别名修正和指标上下架；下架覆盖搜索、描述、执行硬门禁；目录改为 generation 先写后切换；指标管理页增加真实检索验证。实施和旧库升级说明见 `docs/METRIC_CATALOG_RETRIEVAL.md` |
+| 2026-07-22 | ES/PGVector 轻量生产配置与回切基线 | 向量库改为环境变量切换；PG 使用 `pgvector/pgvector:pg16-bookworm` 独立 Compose、TEXT 主键、HNSW/GIN 索引、过滤迭代扫描、启动校验和小连接池；ES 移除个人绝对路径与测试磁盘水位配置，使用命名卷、资源/日志限制和超时；补齐中文配置与部署说明 |
 
 ---
 
 ## 当前待办
+
+### 指标目录标准化接入
+
+> `data-agent-metric-catalog/1.0` 标准目录接入已于 2026-07-24 完成。实施范围、兼容策略、
+> 测试和验收边界见 `docs/METRIC_CATALOG_INTEGRATION_PLAN.md`。
+
+- [x] 新增标准目录 Parser 和公共目录校验。
+- [x] 将 search/describe/execute 主身份收敛为 `metricKey`，保留旧标识兼容。
+- [x] 正确处理 data-metrics `filterList` 数组、`code=0` 成功条件和 `data.list` 结果。
+- [x] 保留原始响应并完成管理页、实时流和历史展示验收。
+- [x] 在 Parser、工具说明和执行前校验中禁止 data-metrics v1 的 `isNull/isNotNull`。
 
 ### 问数核心链路专项整改（最高优先级）
 

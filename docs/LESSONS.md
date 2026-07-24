@@ -235,6 +235,15 @@
 
 ---
 
+## 2026-07-22: PGVector 回切不能只恢复连接配置
+
+- **现象**：代码保留了 PGVector starter 和条件 Bean，看起来把 `type` 改为 `pgvector` 就能回切；实际新环境缺少扩展和表，指标同步还可能因 `metric:<generation>:<metricKey>` 文本 ID 被默认 UUID 主键拒绝。
+- **根因**：Spring AI 1.1.0 的 PGVectorStore 默认主键类型是 UUID，且项目手工 Builder 设置了 `initializeSchema(false)`；普通 PostgreSQL 镜像不包含 vector 扩展。元数据过滤实际使用 `metadata::jsonb @@ jsonpath`，为单字段建立普通 B-tree 也不能覆盖主要过滤语句。
+- **修复**：PGVectorStore 固定使用 `PgIdType.TEXT`；提供 `pgvector/pgvector:pg16-bookworm` 独立 Compose 和显式初始化 SQL；创建余弦 HNSW 与 `jsonb_path_ops` GIN 索引；pgvector 0.8+ 开启严格顺序迭代扫描；应用只校验既有表，不负责启动期迁移。
+- **教训**：[CHECKPOINT] 切换向量后端必须同时验证“镜像扩展 → 主键类型 → 向量维度 → 实际过滤 SQL → 索引算子类 → 初始化/升级边界 → 真实文本 ID 读写”，不能以依赖和 Bean 仍存在推断可回切。容器初始化目录只对空 Volume 生效，已有环境必须提供受控升级步骤。
+
+---
+
 ## 模板
 
 ```markdown

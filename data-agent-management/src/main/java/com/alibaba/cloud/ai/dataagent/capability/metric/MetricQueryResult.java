@@ -15,6 +15,8 @@
  */
 package com.alibaba.cloud.ai.dataagent.capability.metric;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.NullNode;
 import java.util.List;
 import java.util.Map;
 import lombok.Builder;
@@ -23,7 +25,7 @@ import org.springframework.util.StringUtils;
 @Builder
 record MetricQueryResult(String status, String summary, String clarificationMessage,
 		List<MetricRequiredParameter> missingRequiredParameters, List<Column> columns, List<Map<String, Object>> rows,
-		Map<String, Object> metadata) {
+		Map<String, Object> metadata, JsonNode rawData) {
 
 	public MetricQueryResult {
 		status = StringUtils.hasText(status) ? status : "SUCCESS";
@@ -32,6 +34,7 @@ record MetricQueryResult(String status, String summary, String clarificationMess
 		columns = columns == null ? List.of() : List.copyOf(columns);
 		rows = rows == null ? List.of() : List.copyOf(rows);
 		metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
+		rawData = rawData == null ? NullNode.getInstance() : rawData;
 	}
 
 	@Builder

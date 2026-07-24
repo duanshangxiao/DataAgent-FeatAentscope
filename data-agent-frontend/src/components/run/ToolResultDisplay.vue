@@ -46,6 +46,8 @@
     'mt.filters': true,
     'mt.candidates': true,
     'mt.rows': true,
+    'mt.response': true,
+    'mt.raw': true,
     'sm.hits': true,
     'dk.hits': true,
   };
@@ -165,11 +167,28 @@
     return (
       data &&
       typeof data === 'object' &&
-      'metricCode' in data &&
       !('candidates' in data) &&
       !('status' in data) &&
-      'requestParameters' in data
+      (('definition' in data && 'contract' in data) ||
+        ('metricCode' in data && 'requestParameters' in data))
     );
+  }
+
+  function metricDefinition(data: any): any {
+    return data?.definition || data || {};
+  }
+
+  function metricContract(data: any): any {
+    return data?.contract || data || {};
+  }
+
+  function metricStatusTagType(
+    status: string,
+  ): 'success' | 'warning' | 'danger' | 'info' {
+    if (status === 'SUCCESS') return 'success';
+    if (status === 'FALLBACK_TO_DB' || status === 'NEED_CLARIFICATION') return 'warning';
+    if (status === 'BUSINESS_ERROR' || status === 'INVALID_ARGUMENT') return 'danger';
+    return 'info';
   }
 
   function copyJson() {
@@ -700,13 +719,7 @@
           <div v-if="toolData.json.status" class="tool-metric-status">
             状态:
             <el-tag
-              :type="
-                toolData.json.status === 'SUCCESS'
-                  ? 'success'
-                  : toolData.json.status === 'FALLBACK_TO_DB'
-                    ? 'warning'
-                    : 'info'
-              "
+              :type="metricStatusTagType(toolData.json.status)"
               size="small"
             >
               {{ toolData.json.status }}
@@ -730,7 +743,9 @@
             <div class="tool-hits">
               <div v-for="(c, ci) in toolData.json.candidates" :key="ci" class="tool-hit-item">
                 <div class="tool-hit-header">
-                  <span class="tool-hit-table">{{ c.metricCode || c.operationId || c.apiId }}</span>
+                  <span class="tool-hit-table">{{
+                    c.metricKey || c.metricCode || c.operationId || c.apiId
+                  }}</span>
                   <span v-if="c.score !== undefined" class="tool-hit-score">
                     匹配度: {{ (c.score * 100).toFixed(0) }}%
                   </span>
@@ -775,7 +790,7 @@
 
           <!-- describe (metric.catalog.describe) -->
           <template v-else-if="isMetricDescribe(toolData.json)">
-            <div v-if="toolData.json.metricCode" class="tool-subsection">
+            <div v-if="metricDefinition(toolData.json).metricKey" class="tool-subsection">
               <h4
                 class="tool-subsection-title collapsible"
                 :class="{ collapsed: isCollapsed('mt.basic') }"
@@ -786,36 +801,65 @@
               <div v-show="!isCollapsed('mt.basic')" class="tool-metric-basic">
                 <div class="tool-metric-row">
                   <span class="tool-metric-label">标识</span>
-                  <code>{{ toolData.json.metricCode }}</code>
+                  <code>{{ metricDefinition(toolData.json).metricKey }}</code>
                 </div>
-                <div v-if="toolData.json.metricName" class="tool-metric-row">
+                <div v-if="metricDefinition(toolData.json).metricCode" class="tool-metric-row">
+                  <span class="tool-metric-label">编码</span>
+                  <code>{{ metricDefinition(toolData.json).metricCode }}</code>
+                </div>
+                <div v-if="metricDefinition(toolData.json).metricName" class="tool-metric-row">
                   <span class="tool-metric-label">名称</span>
-                  <span>{{ toolData.json.metricName }}</span>
+                  <span>{{ metricDefinition(toolData.json).metricName }}</span>
                 </div>
-                <div v-if="toolData.json.description" class="tool-metric-row">
+                <div v-if="metricDefinition(toolData.json).description" class="tool-metric-row">
                   <span class="tool-metric-label">描述</span>
-                  <span>{{ toolData.json.description }}</span>
+                  <span>{{ metricDefinition(toolData.json).description }}</span>
                 </div>
-                <div v-if="toolData.json.operationId" class="tool-metric-row">
+                <div v-if="metricContract(toolData.json).operationId" class="tool-metric-row">
                   <span class="tool-metric-label">接口</span>
-                  <code>{{ toolData.json.httpMethod || 'GET' }} {{ toolData.json.path }}</code>
-                  <span class="tool-metric-opid">({{ toolData.json.operationId }})</span>
+                  <code
+                    >{{ metricContract(toolData.json).httpMethod || 'GET' }}
+                    {{ metricContract(toolData.json).path }}</code
+                  >
+                  <span class="tool-metric-opid"
+                    >({{ metricContract(toolData.json).operationId }})</span
+                  >
                 </div>
-                <div v-if="toolData.json.tags && toolData.json.tags.length > 0" class="tool-metric-row">
+                <div
+                  v-if="
+                    metricDefinition(toolData.json).tags &&
+                    metricDefinition(toolData.json).tags.length > 0
+                  "
+                  class="tool-metric-row"
+                >
                   <span class="tool-metric-label">标签</span>
-                  <el-tag v-for="t in toolData.json.tags" :key="t" size="small" effect="plain">{{ t }}</el-tag>
+                  <el-tag
+                    v-for="t in metricDefinition(toolData.json).tags"
+                    :key="t"
+                    size="small"
+                    effect="plain"
+                    >{{ t }}</el-tag
+                  >
                 </div>
               </div>
             </div>
 
-            <div v-if="toolData.json.requestParameters && toolData.json.requestParameters.length > 0" class="tool-subsection">
+            <div
+              v-if="
+                metricContract(toolData.json).requestParameters &&
+                metricContract(toolData.json).requestParameters.length > 0
+              "
+              class="tool-subsection"
+            >
               <h4
                 class="tool-subsection-title collapsible"
                 :class="{ collapsed: isCollapsed('mt.params') }"
                 @click="toggleSection('mt.params')"
               >
                 请求参数
-                <el-tag size="small" round>{{ toolData.json.requestParameters.length }}</el-tag>
+                <el-tag size="small" round>{{
+                  metricContract(toolData.json).requestParameters.length
+                }}</el-tag>
               </h4>
               <div v-show="!isCollapsed('mt.params')">
                 <div class="tool-columns-table-wrap">
@@ -830,7 +874,10 @@
                       </tr>
                     </thead>
                     <tbody>
-                      <tr v-for="p in toolData.json.requestParameters" :key="p.name">
+                      <tr
+                        v-for="p in metricContract(toolData.json).requestParameters"
+                        :key="p.name"
+                      >
                         <td class="col-name">{{ p.name }}</td>
                         <td><el-tag size="small" effect="plain">{{ p.type || '-' }}</el-tag></td>
                         <td>
@@ -847,41 +894,119 @@
               </div>
             </div>
 
-            <div v-if="toolData.json.supportedDimensions && toolData.json.supportedDimensions.length > 0" class="tool-subsection">
+            <div
+              v-if="
+                metricDefinition(toolData.json).supportedDimensions &&
+                metricDefinition(toolData.json).supportedDimensions.length > 0
+              "
+              class="tool-subsection"
+            >
               <h4
                 class="tool-subsection-title collapsible"
                 :class="{ collapsed: isCollapsed('mt.dims') }"
                 @click="toggleSection('mt.dims')"
               >
                 支持维度
-                <el-tag size="small" round>{{ toolData.json.supportedDimensions.length }}</el-tag>
+                <el-tag size="small" round>{{
+                  metricDefinition(toolData.json).supportedDimensions.length
+                }}</el-tag>
               </h4>
               <div v-show="!isCollapsed('mt.dims')">
                 <div class="tool-relations">
-                  <el-tag v-for="d in toolData.json.supportedDimensions" :key="d" size="small" effect="plain" type="success">{{ d }}</el-tag>
+                  <el-tag
+                    v-for="d in metricDefinition(toolData.json).supportedDimensions"
+                    :key="d"
+                    size="small"
+                    effect="plain"
+                    type="success"
+                    >{{ d }}</el-tag
+                  >
                 </div>
               </div>
             </div>
 
-            <div v-if="toolData.json.supportedFilters && toolData.json.supportedFilters.length > 0" class="tool-subsection">
+            <div
+              v-if="
+                metricDefinition(toolData.json).supportedFilters &&
+                metricDefinition(toolData.json).supportedFilters.length > 0
+              "
+              class="tool-subsection"
+            >
               <h4
                 class="tool-subsection-title collapsible"
                 :class="{ collapsed: isCollapsed('mt.filters') }"
                 @click="toggleSection('mt.filters')"
               >
                 支持过滤
-                <el-tag size="small" round>{{ toolData.json.supportedFilters.length }}</el-tag>
+                <el-tag size="small" round>{{
+                  metricDefinition(toolData.json).supportedFilters.length
+                }}</el-tag>
               </h4>
               <div v-show="!isCollapsed('mt.filters')">
                 <div class="tool-relations">
-                  <el-tag v-for="f in toolData.json.supportedFilters" :key="f" size="small" effect="plain" type="warning">{{ f }}</el-tag>
+                  <el-tag
+                    v-for="f in metricDefinition(toolData.json).supportedFilters"
+                    :key="f"
+                    size="small"
+                    effect="plain"
+                    type="warning"
+                    >{{ f }}</el-tag
+                  >
                 </div>
+              </div>
+            </div>
+
+            <div v-if="metricContract(toolData.json).response" class="tool-subsection">
+              <h4
+                class="tool-subsection-title collapsible"
+                :class="{ collapsed: isCollapsed('mt.response') }"
+                @click="toggleSection('mt.response')"
+              >
+                响应契约
+              </h4>
+              <div v-show="!isCollapsed('mt.response')" class="tool-metric-basic">
+                <div class="tool-metric-row">
+                  <span class="tool-metric-label">结果</span>
+                  <code>{{ metricContract(toolData.json).response.resultPath || '自动识别' }}</code>
+                </div>
+                <div
+                  v-if="metricContract(toolData.json).response.successCriteria"
+                  class="tool-metric-row"
+                >
+                  <span class="tool-metric-label">成功</span>
+                  <code>{{
+                    `${metricContract(toolData.json).response.successCriteria.jsonPath} ${metricContract(toolData.json).response.successCriteria.operator} ${formatValue(metricContract(toolData.json).response.successCriteria.expectedValue)}`
+                  }}</code>
+                </div>
+                <pre class="tool-raw-json">{{
+                  JSON.stringify(metricContract(toolData.json).response, null, 2)
+                }}</pre>
               </div>
             </div>
           </template>
 
+          <div v-if="toolData.json.rawData != null" class="tool-subsection">
+            <h4
+              class="tool-subsection-title collapsible"
+              :class="{ collapsed: isCollapsed('mt.raw') }"
+              @click="toggleSection('mt.raw')"
+            >
+              原始响应
+            </h4>
+            <pre v-show="!isCollapsed('mt.raw')" class="tool-raw-json">{{
+              JSON.stringify(toolData.json.rawData, null, 2)
+            }}</pre>
+          </div>
+
           <!-- else: raw JSON -->
-          <div v-else class="tool-raw-json">
+          <div
+            v-if="
+              !(toolData.json.rows && toolData.json.rows.length > 0) &&
+              !isMetricDescribe(toolData.json) &&
+              toolData.json.rawData == null
+            "
+            class="tool-raw-json"
+          >
             <pre>{{ JSON.stringify(toolData.json, null, 2) }}</pre>
           </div>
         </div>

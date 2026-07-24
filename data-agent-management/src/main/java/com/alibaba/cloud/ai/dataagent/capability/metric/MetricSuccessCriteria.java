@@ -15,18 +15,18 @@
  */
 package com.alibaba.cloud.ai.dataagent.capability.metric;
 
-import java.util.List;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.NullNode;
 import lombok.Builder;
 import org.springframework.util.StringUtils;
 
+/** Deterministic business-success rule evaluated after an HTTP response succeeds. */
 @Builder
-public record MetricApiParameter(String name, String location, String jsonPath, String type, String format,
-		boolean required, String description, List<String> enumValues, Object example, Object defaultValue) {
+public record MetricSuccessCriteria(String jsonPath, String operator, JsonNode expectedValue) {
 
-	public MetricApiParameter {
-		location = StringUtils.hasText(location) ? location : "body";
-		jsonPath = StringUtils.hasText(jsonPath) ? jsonPath : name;
-		enumValues = enumValues == null ? List.of() : List.copyOf(enumValues);
+	public MetricSuccessCriteria {
+		operator = StringUtils.hasText(operator) ? operator.toUpperCase() : "EQ";
+		expectedValue = expectedValue == null ? NullNode.getInstance() : expectedValue;
 	}
 
 }

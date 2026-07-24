@@ -10,6 +10,7 @@
 | Node.js | 18+ |
 | MySQL | 推荐 8.0 |
 | Elasticsearch | 8.18.0，默认向量存储 |
+| PGVector | 可选；镜像示例 `pgvector/pgvector:pg16-bookworm` |
 | Maven | 使用仓库根目录 `./mvnw` |
 
 Python 和 Docker 只在使用相应代码执行器或本地容器示例时需要。
@@ -42,7 +43,7 @@ mysql -h 127.0.0.1 -P 3360 -u root -p \
 docker compose -f docker-file/docker-compose-es.yml up -d
 ```
 
-该 Compose 包含开发者机器的绝对挂载路径，首次使用前必须按本机目录调整。确认服务可用：
+该 Compose 使用命名卷持久化数据，HTTP 端口默认只绑定本机。确认服务可用：
 
 ```bash
 curl -s http://localhost:9200/_cluster/health
@@ -63,6 +64,7 @@ DATA_AGENT_DATASOURCE_URL='jdbc:mysql://127.0.0.1:3360/feat-agentscope?useUnicod
 DATA_AGENT_DATASOURCE_USERNAME='root'
 DATA_AGENT_DATASOURCE_PASSWORD='你的本地密码'
 DATA_AGENT_DATASOURCE_SQL_INIT='never'
+DATA_AGENT_VECTORSTORE_TYPE='elasticsearch'
 SPRING_ELASTICSEARCH_URIS='http://127.0.0.1:9200'
 ```
 
@@ -131,7 +133,7 @@ export VITE_BACKEND_TARGET='http://127.0.0.1:8065'
 
 ### 后端启动但无法问答
 
-分别检查 Chat Model、Embedding Model、Elasticsearch 和目标业务数据源。HTTP 端口可访问不代表这些外部依赖已就绪。
+分别检查 Chat Model、Embedding Model、当前选择的 ES/PGVector 和目标业务数据源。HTTP 端口可访问不代表这些外部依赖已就绪。
 
 ### 修改配置后没有生效
 

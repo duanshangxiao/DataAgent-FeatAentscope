@@ -15,18 +15,25 @@
  */
 package com.alibaba.cloud.ai.dataagent.capability.metric;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.NullNode;
 import java.util.List;
 import lombok.Builder;
 import org.springframework.util.StringUtils;
 
+/** Response documentation plus the minimal deterministic extraction contract. */
 @Builder
-public record MetricApiParameter(String name, String location, String jsonPath, String type, String format,
-		boolean required, String description, List<String> enumValues, Object example, Object defaultValue) {
+public record MetricApiResponse(String description, String contentType, JsonNode schema, List<JsonNode> examples,
+		MetricSuccessCriteria successCriteria, String resultPath, String messagePath) {
 
-	public MetricApiParameter {
-		location = StringUtils.hasText(location) ? location : "body";
-		jsonPath = StringUtils.hasText(jsonPath) ? jsonPath : name;
-		enumValues = enumValues == null ? List.of() : List.copyOf(enumValues);
+	public MetricApiResponse {
+		contentType = StringUtils.hasText(contentType) ? contentType : "application/json";
+		schema = schema == null ? NullNode.getInstance() : schema;
+		examples = examples == null ? List.of() : List.copyOf(examples);
+	}
+
+	public static MetricApiResponse empty() {
+		return new MetricApiResponse(null, "application/json", NullNode.getInstance(), List.of(), null, null, null);
 	}
 
 }

@@ -16,6 +16,7 @@
 package com.alibaba.cloud.ai.dataagent.capability.metric;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.NullNode;
 import java.util.List;
 import lombok.Builder;
 import org.springframework.util.StringUtils;
@@ -23,10 +24,12 @@ import org.springframework.util.StringUtils;
 /** Technical contract used only after a business metric has been selected. */
 @Builder
 public record MetricApiContract(String operationId, String httpMethod, String path,
-		List<MetricApiParameter> requestParameters, JsonNode requestSchema, JsonNode responseSchema) {
+		List<MetricApiParameter> requestParameters, JsonNode requestSchema, MetricApiResponse response) {
 
 	public MetricApiContract {
 		requestParameters = requestParameters == null ? List.of() : List.copyOf(requestParameters);
+		requestSchema = requestSchema == null ? NullNode.getInstance() : requestSchema;
+		response = response == null ? MetricApiResponse.empty() : response;
 	}
 
 	public String apiId() {
@@ -35,6 +38,11 @@ public record MetricApiContract(String operationId, String httpMethod, String pa
 
 	public List<MetricApiParameter> requiredParameters() {
 		return requestParameters.stream().filter(MetricApiParameter::required).toList();
+	}
+
+	/** Compatibility accessor for callers that only need the response schema. */
+	public JsonNode responseSchema() {
+		return response.schema();
 	}
 
 }

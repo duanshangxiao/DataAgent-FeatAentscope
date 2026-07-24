@@ -1,6 +1,11 @@
 # 指标目录与检索实施方案
 
 > 状态：第一阶段已实施。本文同时记录本次设计决策、当前实现和后续验收边界。
+>
+> 第三方标准目录 JSON、data-metrics 供应方 API Profile 和后续改造计划分别见
+> [第三方指标目录与 HTTP 接口接入规范](METRIC_CATALOG_INTEGRATION_SPEC.md)、
+> [指标目录标准化接入技术实施方案](METRIC_CATALOG_INTEGRATION_PLAN.md)。在该方案实施完成前，
+> 本文描述的 OpenAPI 同步仍是当前运行事实。
 
 ## 1. 工程目标
 
@@ -67,9 +72,9 @@ MetricSearchResult MetricRetrievalService.search(MetricSearchCommand command)
 1. 校验问题，服务端将返回数量限制为 1～10。
 2. 按 `agentId` 做高置信业务知识扩展。
 3. 对指标编码、名称和别名做精确命中。
-4. 使用 Elasticsearch 并行执行向量与字段加权关键词检索。
-5. RRF 使用 `metricKey` 去重，写回融合分数并以 `metricKey` 稳定打破同分。
-6. ES 过滤活动 generation 和 `ONLINE`，业务层再次执行上架状态硬过滤。
+4. ES 模式并行执行向量与字段加权关键词检索；PGVector 模式执行纯向量检索。
+5. ES 模式由 RRF 使用 `metricKey` 去重并写回融合分数；PGVector 模式使用向量分数，最终都以 `metricKey` 稳定打破同分。
+6. 当前向量库过滤活动 generation 和 `ONLINE`，业务层再次执行上架状态硬过滤。
 7. 输出 `MATCH`、`AMBIGUOUS` 或 `NO_MATCH`，并返回命中字段、分数和增强术语。
 
 指标向量文本只包含业务语义，不再写入 HTTP 路径、参数名和请求说明。关键词分支对 `metricCode`、`metricName`、`aliases`、`description` 使用不同权重。

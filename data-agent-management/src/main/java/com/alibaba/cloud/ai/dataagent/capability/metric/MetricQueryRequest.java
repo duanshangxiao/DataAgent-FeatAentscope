@@ -24,6 +24,8 @@ import lombok.Data;
 @JsonIgnoreProperties(ignoreUnknown = true)
 class MetricQueryRequest {
 
+	private String metricKey;
+
 	private String operationId;
 
 	private String metricCode;

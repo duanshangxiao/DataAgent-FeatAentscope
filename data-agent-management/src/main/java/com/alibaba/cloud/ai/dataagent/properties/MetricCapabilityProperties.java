@@ -62,6 +62,16 @@ public class MetricCapabilityProperties {
 	private long timeoutMs = 10000L;
 
 	/**
+	 * 指标接口单次响应体最大字节数。
+	 */
+	private int maxResponseBytes = 262_144;
+
+	/**
+	 * 结构化展示最多保留的结果行数；原始 JSON 仍完整保留。
+	 */
+	private int maxResultRows = 200;
+
+	/**
 	 * 是否启用 embedding 语义检索，默认开启（需要 EmbeddingModel 可用）。
 	 */
 	private boolean embeddingEnabled = true;

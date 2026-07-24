@@ -65,9 +65,13 @@ class MetricToolProvider {
 			{
 			  "type": "object",
 			  "properties": {
+			    "metricKey": {
+			      "type": "string",
+			      "description": "指标永久身份，优先使用 search 返回的 metricKey。"
+			    },
 			    "operationId": {
 			      "type": "string",
-			      "description": "指标接口 operationId，推荐使用 search 返回的 apiId/operationId。"
+			      "description": "兼容通过指标接口 operationId 查询。"
 			    },
 			    "metricCode": {
 			      "type": "string",
@@ -82,6 +86,10 @@ class MetricToolProvider {
 			{
 			  "type": "object",
 			  "properties": {
+			    "metricKey": {
+			      "type": "string",
+			      "description": "要执行的指标永久身份，优先使用 search 返回的 metricKey。"
+			    },
 			    "operationId": {
 			      "type": "string",
 			      "description": "要执行的指标接口 operationId。"
@@ -150,11 +158,17 @@ class MetricToolProvider {
 		return Map.copyOf(callbacks);
 	}
 
-	private String pickIdentifier(String operationId, String metricCode) {
+	private String pickIdentifier(String metricKey, String metricCode, String operationId) {
+		if (StringUtils.hasText(metricKey)) {
+			return metricKey.trim();
+		}
+		if (StringUtils.hasText(metricCode)) {
+			return metricCode.trim();
+		}
 		if (StringUtils.hasText(operationId)) {
 			return operationId.trim();
 		}
-		return StringUtils.hasText(metricCode) ? metricCode.trim() : "";
+		return "";
 	}
 
 	private final class MetricSearchToolCallback implements ToolCallback {
@@ -225,8 +239,8 @@ class MetricToolProvider {
 			try {
 				ObjectNode input = StringUtils.hasText(toolInput) ? (ObjectNode) objectMapper.readTree(toolInput)
 						: objectMapper.createObjectNode();
-				String identifier = pickIdentifier(input.path("operationId").asText(),
-						input.path("metricCode").asText());
+				String identifier = pickIdentifier(input.path("metricKey").asText(),
+						input.path("metricCode").asText(), input.path("operationId").asText());
 				log.info("Metric catalog describe invoked. identifier={}", identifier);
 				MetricCatalogEntry definition = metricDefinitionLookup.getOnlineEntry(identifier)
 					.orElseThrow(() -> new IllegalArgumentException("未找到指标接口定义：" + identifier));
@@ -263,16 +277,18 @@ class MetricToolProvider {
 			try {
 				MetricQueryRequest request = objectMapper.readValue(toolInput, MetricQueryRequest.class);
 				AgentRequest agentRequest = ToolContextRequestResolver.resolveGraphRequest(toolContext);
-				log.info("Metric query execute invoked. operationId={}, queryLength={}, argumentKeys={}, threadId={}",
-						request.getOperationId(), inputLength(request.getQuery()),
+				log.info("Metric query execute invoked. metricKey={}, operationId={}, queryLength={}, argumentKeys={}, threadId={}",
+						request.getMetricKey(), request.getOperationId(), inputLength(request.getQuery()),
 						request.getArguments() == null ? List.of() : request.getArguments().keySet(),
 						agentRequest != null ? agentRequest.getThreadId() : "N/A");
 				MetricQueryResult result = metricQueryExecutionService.execute(request);
 				log.info("Metric query execute completed. identifier={}, status={}, summary={}, rowCount={}",
-						pickIdentifier(request.getOperationId(), request.getMetricCode()), result.status(),
+						pickIdentifier(request.getMetricKey(), request.getMetricCode(), request.getOperationId()),
+						result.status(),
 						result.summary(), result.rows() == null ? 0 : result.rows().size());
 				answerTraceExplainStore.recordMetricQueryResult(agentRequest,
-						pickIdentifier(request.getOperationId(), request.getMetricCode()), result.summary());
+						pickIdentifier(request.getMetricKey(), request.getMetricCode(), request.getOperationId()),
+						result.summary());
 				return objectMapper.writeValueAsString(result);
 			}
 			catch (Exception ex) {

@@ -59,10 +59,17 @@ public class DatasourceConfig {
     @ConditionalOnProperty(name = "spring.ai.vectorstore.type", havingValue = "pgvector")
     public DataSource pgVectorDataSource() {
         HikariDataSource dataSource = new HikariDataSource();
+        dataSource.setPoolName("data-agent-pgvector-pool");
         dataSource.setJdbcUrl(pgVectorDatasourceProperties.getUrl());
         dataSource.setUsername(pgVectorDatasourceProperties.getUsername());
         dataSource.setPassword(pgVectorDatasourceProperties.getPassword());
         dataSource.setDriverClassName(pgVectorDatasourceProperties.getDriverClassName());
+        dataSource.setMinimumIdle(pgVectorDatasourceProperties.getMinimumIdle());
+        dataSource.setMaximumPoolSize(pgVectorDatasourceProperties.getMaximumPoolSize());
+        dataSource.setConnectionTimeout(pgVectorDatasourceProperties.getConnectionTimeoutMs());
+        dataSource.setValidationTimeout(pgVectorDatasourceProperties.getValidationTimeoutMs());
+        dataSource.setIdleTimeout(pgVectorDatasourceProperties.getIdleTimeoutMs());
+        dataSource.setMaxLifetime(pgVectorDatasourceProperties.getMaxLifetimeMs());
         return dataSource;
     }
 
@@ -80,6 +87,9 @@ public class DatasourceConfig {
             EmbeddingModel embeddingModel) {
         return PgVectorStore.builder(pgVectorJdbcTemplate, embeddingModel)
                 .initializeSchema(false)
+                // 指标文档使用 metric:<generation>:<metricKey> 稳定文本 ID，不能使用默认 UUID 主键。
+                .idType(PgVectorStore.PgIdType.TEXT)
+                .vectorTableValidationsEnabled(pgVectorDatasourceProperties.isSchemaValidation())
                 .dimensions(pgVectorDatasourceProperties.getDimensions())
                 .distanceType(PgVectorStore.PgDistanceType.COSINE_DISTANCE)
                 .schemaName(pgVectorDatasourceProperties.getSchemaName())

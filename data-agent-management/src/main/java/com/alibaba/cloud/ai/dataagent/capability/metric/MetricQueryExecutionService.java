@@ -23,6 +23,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -38,6 +39,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.ExchangeStrategies;
 
 import static com.alibaba.cloud.ai.dataagent.capability.metric.MetricUtils.firstNonBlank;
 
@@ -70,13 +72,17 @@ class MetricQueryExecutionService {
 		this.properties = properties;
 		this.circuitBreaker = circuitBreaker;
 		this.objectMapper = objectMapper;
-		this.webClient = webClientBuilder.baseUrl(properties.getBaseUrl()).build();
+		ExchangeStrategies exchangeStrategies = ExchangeStrategies.builder()
+			.codecs(configurer -> configurer.defaultCodecs().maxInMemorySize(properties.getMaxResponseBytes()))
+			.build();
+		this.webClient = webClientBuilder.baseUrl(properties.getBaseUrl()).exchangeStrategies(exchangeStrategies).build();
 	}
 
 	public MetricQueryResult execute(MetricQueryRequest request) {
-		String identifier = request == null ? "" : firstNonBlank(request.getOperationId(), request.getMetricCode());
+		String identifier = request == null ? ""
+				: firstNonBlank(request.getMetricKey(), request.getMetricCode(), request.getOperationId());
 		if (!StringUtils.hasText(identifier)) {
-			throw new IllegalArgumentException("operationId 或 metricCode 不能为空。");
+			throw new IllegalArgumentException("metricKey、metricCode 或 operationId 不能同时为空。");
 		}
 		MetricCatalogEntry catalogEntry = metricDefinitionLookup.getOnlineEntry(identifier)
 			.orElseThrow(() -> new IllegalArgumentException("指标不存在或已下架：" + identifier));
@@ -85,6 +91,9 @@ class MetricQueryExecutionService {
 		PreparedMetricRequest preparedRequest = prepare(contract, request);
 		if (!preparedRequest.readyToExecute()) {
 			return buildClarificationResult(definition, contract, preparedRequest);
+		}
+		if (containsUnsupportedNullOperator(preparedRequest.arguments())) {
+			return buildInvalidArgumentResult(definition, contract, preparedRequest);
 		}
 		if (!circuitBreaker.allowRequest()) {
 			log.warn("Metric circuit breaker blocked request. apiId={}", contract.apiId());
@@ -98,6 +107,9 @@ class MetricQueryExecutionService {
 			JsonNode response = executeHttp(contract, preparedRequest);
 			circuitBreaker.recordSuccess();
 			long costMs = System.currentTimeMillis() - startTime;
+			if (!isBusinessSuccess(contract.response(), response)) {
+				return buildBusinessErrorResult(definition, contract, response, costMs, preparedRequest.arguments());
+			}
 			MetricQueryResult result = normalize(definition, contract, response, costMs, preparedRequest.arguments());
 			log.info("Metric query execute success. apiId={}, costMs={}ms, rowCount={}",
 					contract.apiId(), costMs, result.rows() != null ? result.rows().size() : 0);
@@ -108,6 +120,52 @@ class MetricQueryExecutionService {
 			log.warn("Metric query execution failed, returning FALLBACK_TO_DB. apiId={}", contract.apiId(), ex);
 			return buildFallbackResult(contract, preparedRequest, ex);
 		}
+	}
+
+	private MetricQueryResult buildInvalidArgumentResult(MetricDefinition definition, MetricApiContract contract,
+			PreparedMetricRequest preparedRequest) {
+		Map<String, Object> metadata = baseMetadata(definition, contract, preparedRequest.arguments());
+		metadata.put("status", "INVALID_ARGUMENT");
+		metadata.put("error", "data-metrics v1 不支持 isNull/isNotNull 过滤操作符，未发起 HTTP 请求。");
+		return MetricQueryResult.builder()
+			.status("INVALID_ARGUMENT")
+			.summary("当前指标契约不支持 isNull/isNotNull 过滤操作符，请改用已开放的双参数操作符。")
+			.metadata(metadata)
+			.build();
+	}
+
+	private boolean containsUnsupportedNullOperator(Object value) {
+		if (value instanceof Map<?, ?> map) {
+			for (Map.Entry<?, ?> entry : map.entrySet()) {
+				if ("filterCondition".equals(String.valueOf(entry.getKey()))
+						&& unsupportedNullOperator(entry.getValue())) {
+					return true;
+				}
+				if (containsUnsupportedNullOperator(entry.getValue())) {
+					return true;
+				}
+			}
+		}
+		else if (value instanceof Collection<?> collection) {
+			for (Object item : collection) {
+				if (containsUnsupportedNullOperator(item)) {
+					return true;
+				}
+			}
+		}
+		else if (value != null && value.getClass().isArray()) {
+			for (Object item : objectMapper.convertValue(value, List.class)) {
+				if (containsUnsupportedNullOperator(item)) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	private boolean unsupportedNullOperator(Object value) {
+		return value != null && ("isNull".equalsIgnoreCase(String.valueOf(value))
+				|| "isNotNull".equalsIgnoreCase(String.valueOf(value)));
 	}
 
 	private MetricQueryResult buildFallbackResult(MetricApiContract contract,
@@ -481,30 +539,81 @@ class MetricQueryExecutionService {
 		current.set(segments[segments.length - 1], objectMapper.valueToTree(value));
 	}
 
-	private MetricQueryResult normalize(MetricDefinition definition, MetricApiContract contract, JsonNode response, long costMs,
-			Map<String, Object> arguments) {
-		List<Map<String, Object>> rows = extractRows(response);
-		List<MetricQueryResult.Column> columns = extractColumns(rows);
-		Map<String, Object> metadata = new LinkedHashMap<>();
-		metadata.put("sourceType", "metric-system");
-		metadata.put("status", "SUCCESS");
-		metadata.put("apiId", contract.apiId());
-		metadata.put("operationId", contract.operationId());
-		metadata.put("metricCode", definition.metricCode());
-		metadata.put("metricName", definition.metricName());
-		metadata.put("requestArguments", arguments);
+	private boolean isBusinessSuccess(MetricApiResponse responseContract, JsonNode response) {
+		MetricSuccessCriteria criteria = responseContract.successCriteria();
+		if (criteria == null) {
+			return true;
+		}
+		JsonNode actual = findSimpleJsonPath(response, criteria.jsonPath());
+		JsonNode expected = criteria.expectedValue();
+		if ("EQ".equals(criteria.operator())) {
+			if (actual != null && expected != null && actual.isNumber() && expected.isNumber()) {
+				return new BigDecimal(actual.asText()).compareTo(new BigDecimal(expected.asText())) == 0;
+			}
+			return actual != null && actual.equals(expected);
+		}
+		return false;
+	}
+
+	private MetricQueryResult buildBusinessErrorResult(MetricDefinition definition, MetricApiContract contract,
+			JsonNode response, long costMs, Map<String, Object> arguments) {
+		String message = textAtPath(response, contract.response().messagePath());
+		Map<String, Object> metadata = baseMetadata(definition, contract, arguments);
+		metadata.put("status", "BUSINESS_ERROR");
 		metadata.put("costMs", costMs);
 		return MetricQueryResult.builder()
-			.status("SUCCESS")
-			.summary("已查询接口 %s，返回 %d 行结果".formatted(definition.displayName(), rows.size()))
-			.columns(columns)
-			.rows(rows)
+			.status("BUSINESS_ERROR")
+			.summary(StringUtils.hasText(message) ? message : "指标接口返回业务失败。")
 			.metadata(metadata)
+			.rawData(response)
 			.build();
 	}
 
-	private List<Map<String, Object>> extractRows(JsonNode response) {
-		JsonNode rowsNode = locateRowsNode(response);
+	private MetricQueryResult normalize(MetricDefinition definition, MetricApiContract contract, JsonNode response,
+			long costMs, Map<String, Object> arguments) {
+		List<Map<String, Object>> allRows = extractRows(response, contract.response().resultPath());
+		int originalRowCount = allRows.size();
+		int maxRows = Math.max(1, properties.getMaxResultRows());
+		boolean resultTruncated = originalRowCount > maxRows;
+		List<Map<String, Object>> rows = resultTruncated ? List.copyOf(allRows.subList(0, maxRows)) : allRows;
+		List<MetricQueryResult.Column> columns = extractColumns(rows);
+		Map<String, Object> metadata = baseMetadata(definition, contract, arguments);
+		metadata.put("status", "SUCCESS");
+		metadata.put("costMs", costMs);
+		metadata.put("originalRowCount", originalRowCount);
+		metadata.put("returnedRowCount", rows.size());
+		metadata.put("resultTruncated", resultTruncated);
+		return MetricQueryResult.builder()
+			.status("SUCCESS")
+			.summary(resultTruncated
+					? "已查询接口 %s，结果共 %d 行，结构化展示前 %d 行".formatted(definition.displayName(),
+							originalRowCount, rows.size())
+					: "已查询接口 %s，返回 %d 行结果".formatted(definition.displayName(), rows.size()))
+			.columns(columns)
+			.rows(rows)
+			.metadata(metadata)
+			.rawData(response)
+			.build();
+	}
+
+	private Map<String, Object> baseMetadata(MetricDefinition definition, MetricApiContract contract,
+			Map<String, Object> arguments) {
+		Map<String, Object> metadata = new LinkedHashMap<>();
+		metadata.put("sourceType", "metric-system");
+		metadata.put("metricKey", definition.metricKey());
+		metadata.put("metricCode", definition.metricCode());
+		metadata.put("metricName", definition.metricName());
+		metadata.put("apiId", contract.apiId());
+		metadata.put("operationId", contract.operationId());
+		metadata.put("path", contract.path());
+		metadata.put("httpMethod", contract.httpMethod());
+		metadata.put("requestArguments", arguments);
+		return metadata;
+	}
+
+	private List<Map<String, Object>> extractRows(JsonNode response, String resultPath) {
+		JsonNode rowsNode = StringUtils.hasText(resultPath) ? findSimpleJsonPath(response, resultPath)
+				: locateRowsNode(response);
 		if (rowsNode == null || rowsNode.isNull() || rowsNode.isMissingNode()) {
 			return List.of();
 		}
@@ -516,6 +625,27 @@ class MetricQueryExecutionService {
 			return rows;
 		}
 		return List.of(toMap(rowsNode));
+	}
+
+	private JsonNode findSimpleJsonPath(JsonNode root, String jsonPath) {
+		if (root == null || root.isNull() || root.isMissingNode() || !StringUtils.hasText(jsonPath)) {
+			return null;
+		}
+		String normalizedPath = jsonPath.startsWith("$.") ? jsonPath.substring(2)
+				: jsonPath.startsWith(".") ? jsonPath.substring(1) : jsonPath;
+		JsonNode current = root;
+		for (String segment : normalizedPath.split("\\.")) {
+			if (!StringUtils.hasText(segment) || current == null || !current.isObject()) {
+				return null;
+			}
+			current = current.get(segment);
+		}
+		return current;
+	}
+
+	private String textAtPath(JsonNode root, String jsonPath) {
+		JsonNode value = findSimpleJsonPath(root, jsonPath);
+		return value != null && value.isValueNode() && !value.isNull() ? value.asText() : "";
 	}
 
 	private JsonNode locateRowsNode(JsonNode response) {

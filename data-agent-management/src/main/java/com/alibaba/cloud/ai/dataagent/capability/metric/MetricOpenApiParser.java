@@ -162,7 +162,12 @@ class MetricOpenApiParser implements MetricMetadataParser {
 			.path(path)
 			.requestParameters(requestParameters)
 			.requestSchema(requestSchema == null ? NullNode.getInstance() : requestSchema)
-			.responseSchema(responseSchema)
+			.response(MetricApiResponse.builder()
+				.description(resolveResponseDescription(operation))
+				.contentType(resolveResponseContentType(operation))
+				.schema(responseSchema)
+				.examples(extractResponseExamples(operation))
+				.build())
 			.build();
 		return ParseOutcome.of(new MetricCatalogEntry(definition, contract,
 				new MetricBinding(metricKey, contract.apiId()), MetricServiceStatus.ONLINE, false, "COMPLETED", null));
@@ -180,6 +185,7 @@ class MetricOpenApiParser implements MetricMetadataParser {
 				.location(firstNonBlank(text(resolvedParameter, "in"), "query"))
 				.jsonPath(text(resolvedParameter, "name"))
 				.type(resolveSchemaType(schema))
+				.format(text(schema, "format"))
 				.required(resolvedParameter.path("required").asBoolean(false))
 				.description(text(resolvedParameter, "description"))
 				.enumValues(readEnumValues(schema))
@@ -246,6 +252,7 @@ class MetricOpenApiParser implements MetricMetadataParser {
 			.location("body")
 			.jsonPath(jsonPath)
 			.type(resolveSchemaType(schema))
+			.format(text(schema, "format"))
 			.required(required)
 			.description(text(schema, "description"))
 			.enumValues(readEnumValues(schema))
@@ -346,6 +353,50 @@ class MetricOpenApiParser implements MetricMetadataParser {
 			}
 		}
 		return NullNode.getInstance();
+	}
+
+	private String resolveResponseDescription(JsonNode operation) {
+		JsonNode response = preferredResponse(operation);
+		return response.isMissingNode() || response.isNull() ? "" : text(response, "description");
+	}
+
+	private String resolveResponseContentType(JsonNode operation) {
+		JsonNode content = preferredResponse(operation).path("content");
+		for (String preferredType : List.of("application/json", "*/*")) {
+			if (content.has(preferredType)) {
+				return preferredType;
+			}
+		}
+		if (content.isObject() && content.fields().hasNext()) {
+			return content.fields().next().getKey();
+		}
+		return "application/json";
+	}
+
+	private JsonNode preferredResponse(JsonNode operation) {
+		JsonNode responses = operation.path("responses");
+		for (String status : List.of("200", "201", "default")) {
+			JsonNode response = responses.path(status);
+			if (!response.isMissingNode() && !response.isNull()) {
+				return response;
+			}
+		}
+		return NullNode.getInstance();
+	}
+
+	private List<JsonNode> extractResponseExamples(JsonNode operation) {
+		Set<String> serialized = new LinkedHashSet<>();
+		collectExamples(preferredResponse(operation), serialized);
+		List<JsonNode> examples = new ArrayList<>(serialized.size());
+		for (String value : serialized) {
+			try {
+				examples.add(objectMapper.readTree(value));
+			}
+			catch (Exception ex) {
+				examples.add(objectMapper.getNodeFactory().textNode(value));
+			}
+		}
+		return List.copyOf(examples);
 	}
 
 	private JsonNode resolveContentSchema(JsonNode root, JsonNode contentNode) {

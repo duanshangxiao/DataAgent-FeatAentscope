@@ -40,10 +40,26 @@ services:
         - saa-data-agent-backend:1.0.0-SNAPSHOT
     container_name: data-agent-backend
     environment:
+      # DataAgent 管理库。示例密码只用于本地，生产必须改用 Secret。
       - DATA_AGENT_DATASOURCE_URL=jdbc:mysql://mysql:3306/nl2sql_db?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
       - DATA_AGENT_DATASOURCE_USERNAME=root
       - DATA_AGENT_DATASOURCE_PASSWORD=root
       - DATA_AGENT_DATASOURCE_SQL_INIT=always
+
+      # 向量库后端通过一个变量切换；向量维度必须与 Embedding Model 一致。
+      - DATA_AGENT_VECTORSTORE_TYPE=${DATA_AGENT_VECTORSTORE_TYPE:-elasticsearch}
+      - DATA_AGENT_VECTORSTORE_DIMENSIONS=${DATA_AGENT_VECTORSTORE_DIMENSIONS:-1024}
+
+      # ES 与 PG 配置同时声明，但运行时只创建所选后端的 VectorStore。
+      - SPRING_ELASTICSEARCH_URIS=${SPRING_ELASTICSEARCH_URIS:-http://elasticsearch:9200}
+      - SPRING_ELASTICSEARCH_USERNAME=${SPRING_ELASTICSEARCH_USERNAME:-}
+      - SPRING_ELASTICSEARCH_PASSWORD=${SPRING_ELASTICSEARCH_PASSWORD:-}
+      - DATA_AGENT_VECTORSTORE_URL=${DATA_AGENT_VECTORSTORE_URL:-jdbc:postgresql://pgvector:5432/vector_db_feat?currentSchema=public&ApplicationName=data-agent-vectorstore&tcpKeepAlive=true&connectTimeout=10&socketTimeout=30}
+      - DATA_AGENT_VECTORSTORE_USERNAME=${DATA_AGENT_VECTORSTORE_USERNAME:-data_agent}
+      - DATA_AGENT_VECTORSTORE_PASSWORD=${DATA_AGENT_VECTORSTORE_PASSWORD:-data_agent}
+      - DATA_AGENT_VECTORSTORE_SCHEMA=${DATA_AGENT_VECTORSTORE_SCHEMA:-public}
+      - DATA_AGENT_VECTORSTORE_TABLE=${DATA_AGENT_VECTORSTORE_TABLE:-cares_data_agent_weihai}
+
       - AI_DASHSCOPE_API_KEY=${AI_DASHSCOPE_API_KEY}
     ports:
       - "8065:8065"

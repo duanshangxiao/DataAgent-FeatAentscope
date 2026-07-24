@@ -19,7 +19,7 @@ import java.util.List;
 import lombok.Builder;
 
 @Builder
-record MetricRequiredParameter(String name, String location, String description, String example,
+record MetricRequiredParameter(String name, String location, String description, Object example,
 		List<String> enumValues) {
 
 	public MetricRequiredParameter {

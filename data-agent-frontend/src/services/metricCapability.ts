@@ -11,11 +11,28 @@ export interface MetricParameter {
   location: string;
   jsonPath: string;
   type: string;
+  format?: string;
   required: boolean;
   description: string;
   enumValues: string[];
-  example: string;
+  example: unknown;
   defaultValue: unknown;
+}
+
+export interface MetricSuccessCriteria {
+  jsonPath: string;
+  operator: 'EQ';
+  expectedValue: unknown;
+}
+
+export interface MetricApiResponse {
+  description?: string;
+  contentType: string;
+  schema: unknown;
+  examples: unknown[];
+  successCriteria?: MetricSuccessCriteria;
+  resultPath?: string;
+  messagePath?: string;
 }
 
 export interface MetricApiContract {
@@ -23,6 +40,8 @@ export interface MetricApiContract {
   httpMethod: string;
   path: string;
   requestParameters: MetricParameter[];
+  requestSchema: unknown;
+  response: MetricApiResponse;
 }
 
 export interface MetricCatalogView {

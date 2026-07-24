@@ -55,6 +55,8 @@ public class MetricOpenApiSyncService {
 
 	private final MetricMetadataParserFactory parserFactory;
 
+	private final MetricCatalogValidator catalogValidator;
+
 	private final AgentVectorStoreService agentVectorStoreService;
 
 	private final MetricCapabilityStatus metricCapabilityStatus;
@@ -125,6 +127,7 @@ public class MetricOpenApiSyncService {
 			}
 			MetricMetadataParser parser = parserFactory.getParser(properties.getParserFormat());
 			ParsedMetricCatalog sourceCatalog = parser.parse(rawDocument);
+			catalogValidator.validate(sourceCatalog);
 			if (sourceCatalog.entries().isEmpty()) {
 				log.warn("Metric OpenAPI parsed but produced no valid metric definitions. swaggerUrl={}, format={}",
 						properties.getSwaggerUrl(), properties.getParserFormat());

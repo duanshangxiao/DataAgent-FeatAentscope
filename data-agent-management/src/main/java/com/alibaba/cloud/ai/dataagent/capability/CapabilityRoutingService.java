@@ -121,7 +121,8 @@ public class CapabilityRoutingService {
 					1. %s必须首先调用 metric.catalog.search 检索候选指标接口。
 
 					2. 使用 metric.catalog.describe 获取接口完整契约后，调用
-					   metric.query.execute 执行查询。
+					   metric.query.execute 执行查询。describe 和 execute 都优先传入 search 返回的
+					   metricKey，不要自行用参数切换指标。
 
 					3. 仅当 metric.catalog.search 未找到匹配的指标，或
 					   metric.query.execute 返回 FALLBACK_TO_DB 状态时，才回退使用数据库工具做近似计算，并在回答中注明"非标准口径，可能存在偏差"。
@@ -130,6 +131,9 @@ public class CapabilityRoutingService {
 					   指标路径优先，数据库路径是降级方案。
 
 					5. 如果指标系统报错，直接说明指标系统暂时不可用。
+
+					6. v1 禁止生成 isNull 和 isNotNull 过滤操作符；需要判空语义时应向用户说明
+					   当前契约不支持，不能通过 null 或空字符串绕过。
 
 					%s
 
